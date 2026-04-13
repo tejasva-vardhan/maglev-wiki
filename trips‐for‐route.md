@@ -30,8 +30,9 @@ Rider (via a client application).
 
 ## Success Guarantees
 
-- The response contains one entry per active trip on the route at the requested time.
-- Each entry carries the trip's scheduled service date, and optionally its real-time status, its full stop schedule, and any active service alerts.
+- The response contains one entry per active block whose service window intersects the query time range.
+- Each entry reflects the trip the vehicle is currently executing at the requested time, which may belong to a different route than the one queried (see Main Success Scenario step 3).
+- Each entry optionally carries the trip's real-time status, its full stop schedule, and any active service alerts.
 - Referenced entities (trips, routes, agencies, stops, situations) are gathered into the references block.
 
 ## Trigger
@@ -42,29 +43,36 @@ A GET request to `/api/where/trips-for-route/{id}.{format}`.
 
 1. The caller issues a GET request with a route ID embedded in the URL path and optional query parameters.
 2. The system resolves the requested time (defaulting to the current server time if none is supplied).
-3. The system identifies all scheduled block instances for the route whose service window intersects the interval from 30 minutes before the requested time to 10 minutes after it. The backward extension captures trips that may be running late; the forward extension captures trips that may be running early. Both windows are operator-configurable.
-4. For each matched block instance, the system computes the real-time state of the vehicle at the requested time.
-5. For each active block, the system assembles a trip details entry containing:
-   - The trip ID and the service date (midnight of the operating day, in Unix milliseconds).
-   - A frequency block if the trip runs on a frequency-based schedule.
+3. The system identifies all block instances that contain at least one trip on the queried route whose service window intersects the interval from 30 minutes before the requested time to 10 minutes after it. The backward extension captures trips that may be running late; the forward extension captures trips that may be running early. Both windows are operator-configurable. Because a block can link trips serving different routes (interlining), a block matched here may be actively executing a trip on a different route at the requested time.
+4. For each matched block, the system determines which trip the vehicle is currently executing at the requested time (the active trip). The active trip may belong to a different route than the one queried. If real-time vehicle data is available, the vehicle's actual position and state are used; otherwise the vehicle's scheduled position is used.
+5. For each active block, the system assembles a trip details entry using the active trip:
+   - The active trip's ID and the service date (midnight of the operating day, in Unix milliseconds).
+   - A frequency block if the active trip runs on a frequency-based schedule.
    - The full real-time status of the vehicle (if `includeStatus` is `true`).
-   - The complete stop schedule for the trip (if `includeSchedule` is `true`).
+   - The complete stop schedule for the active trip (if `includeSchedule` is `true`).
    - IDs of any service alerts currently affecting the trip.
-6. If `includeTrip` is `true`, the trip record is added to the references block, which transitively pulls in the route and agency.
+6. If `includeTrip` is `true`, the active trip's record is added to the references block, which transitively pulls in the trip's route and agency. When the active trip belongs to a different route than the one queried, it is that interlined route and its agency that appear in references — not the queried route.
 7. Stops referenced by the status (closest stop, next stop) and by the schedule are added to the references block.
-8. Active service alert records are added to the references block.
-9. The system returns HTTP 200 with the list of trip detail entries and the populated references block.
+8. When `includeSchedule` is `true`, the adjacent block trips (the trip immediately before and the trip immediately after the active trip in the block, if any) are also added to the references block. This is how the trip on the queried route appears in references when the vehicle is currently executing an interlined trip on a different route.
+9. Active service alert records are added to the references block.
+10. The system returns HTTP 200 with the list of trip detail entries and the populated references block. No ordering of the result list is guaranteed.
 
 ## Extensions
 
 **2a. `time` is supplied as a Unix millisecond integer or a formatted date string (`yyyy-MM-dd_HH-mm-ss`).**
 The system uses that value in place of the current server time. Continue from step 3.
 
-**4a. A trip is marked as canceled and the system is configured to suppress canceled trips.**
+**4a. A block is matched via a trip on the queried route, but the vehicle is currently executing a trip on a different route (interlining).**
+The entry's `tripId` is the interlined trip's ID. The entry's schedule, status, and all references reflect that interlined trip and its route. The trip on the queried route that caused the block to be selected appears as the `schedule.previousTripId` or `schedule.nextTripId` (when `includeSchedule` is `true`) and is added to the references block. This is expected behaviour, not a defect.
+
+**4b. A trip is marked as canceled and the system is configured to suppress canceled trips.**
 The status object for that trip is omitted from its entry even when `includeStatus` is `true`. The trip entry is still present in the list. See Suspected Defects.
 
-**4b. A trip's data is incomplete (its trip record or stop times cannot be loaded).**
+**4c. A trip's data is incomplete (its trip record or stop times cannot be loaded).**
 That trip is silently excluded from the result list.
+
+**4d. The block is not currently in service at the requested time.**
+Even if the block was selected in step 3, if the block is not executing any trip at the requested time (for example, its last trip ended before the query time), it is excluded from results.
 
 **5a. The route is outside the service area.**
 The system catches the out-of-area condition and returns HTTP 200 with an empty list and `outOfRange: true`.
@@ -99,7 +107,7 @@ The system returns HTTP 500 with an "unknown version" error body.
     "includeTrip": {
       "type": "boolean",
       "default": true,
-      "description": "Whether to load each trip's record into the references block."
+      "description": "Whether to load each active trip's record into the references block."
     },
     "includeStatus": {
       "type": "boolean",
@@ -135,11 +143,11 @@ The system returns HTTP 500 with an "unknown version" error body.
 
 **`time`** — Point in time used to determine which trips are active. Accepts either a plain integer (Unix milliseconds) or a date-time string in `yyyy-MM-dd_HH-mm-ss` format. When omitted, the server's current time is used.
 
-**`includeTrip`** — When `true` (the default), each trip's record is loaded and placed in the `references.trips` block, which transitively adds the route and agency. When `false`, trip records are not loaded and do not appear in references.
+**`includeTrip`** — When `true` (the default), each active trip's record is placed in the `references.trips` block, which transitively adds the trip's route and agency. When the active trip belongs to an interlined route, that interlined route appears in references. When `false`, no trip records are loaded into references via this flag (though the status path may still add the active trip; see Response Structure).
 
 **`includeStatus`** — When `true` (the default), each trip entry includes a `status` object containing the vehicle's real-time position and schedule deviation. When `false`, the `status` field is absent.
 
-**`includeSchedule`** — When `true` (the default), each trip entry includes a `schedule` object with the full ordered list of stop times. When `false`, the `schedule` field is absent.
+**`includeSchedule`** — When `true` (the default), each trip entry includes a `schedule` object with the full ordered list of stop times for the active trip, plus the IDs of the immediately adjacent block trips. When `false`, the `schedule` field is absent.
 
 **`maxCount`** — Accepted and parsed but never applied. The result set is never capped regardless of this value. See Suspected Defects.
 
@@ -201,13 +209,13 @@ The system returns HTTP 500 with an "unknown version" error body.
 
 **`data.outOfRange`** — `true` when the route falls outside the system's service area (the list is empty in this case). Otherwise `false`.
 
-**`data.references`** — Collected referenced entities. Contains sub-objects `agencies`, `routes`, `trips`, `stops`, and `situations`, each an array of the corresponding entity records. Populated according to the `includeTrip`, `includeStatus`, and `includeSchedule` flags. Empty when `includeReferences=false`.
+**`data.references`** — Collected referenced entities. Contains sub-objects `agencies`, `routes`, `trips`, `stops`, and `situations`, each an array of the corresponding entity records. Populated as described in the main scenario. Empty when `includeReferences=false`.
 
 ---
 
 ### data.list[]
 
-One entry per active trip on the route.
+One entry per active block. Each entry is built from the trip the vehicle is currently executing at the requested time; that trip may belong to a route other than the one queried.
 
 ```json
 {
@@ -226,9 +234,9 @@ One entry per active trip on the route.
 }
 ```
 
-**`data.list[].tripId`** — The trip's compound identifier, matching an entry in `data.references.trips` when `includeTrip` is `true`.
+**`data.list[].tripId`** — The ID of the trip the vehicle is actively executing at the requested time. Because a block can link trips on multiple routes, this trip may belong to a different route than the one queried. When the vehicle is interlined, this field carries the interlined trip's ID, not the queried route's trip ID.
 
-**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the operating day for this trip instance.
+**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the operating day for the active trip.
 
 **`data.list[].frequency`** — Present only for frequency-based trips. See `data.list[].frequency` below.
 
@@ -310,7 +318,7 @@ Present when `includeStatus` is `true`.
 }
 ```
 
-**`data.list[].status.activeTripId`** — The trip the vehicle is currently serving. May differ from the entry's `tripId` when the vehicle is running a block that spans multiple trips. Present only when the vehicle has an active trip assignment.
+**`data.list[].status.activeTripId`** — The ID of the trip the vehicle is currently executing. For this endpoint, this field always equals the entry's `tripId`: both are derived from the same active trip at the requested time. The active trip is added to the references block regardless of the `includeTrip` flag.
 
 **`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within its block's ordered trip sequence. `-1` when not set.
 
@@ -340,7 +348,7 @@ Present when `includeStatus` is `true`.
 
 **`data.list[].status.predicted`** — `true` if real-time arrival information is available for this trip.
 
-**`data.list[].status.lastUpdateTime`** — Unix millisecond timestamp of the most recent real-time update received from the vehicle. Absent (not included in the response) when no update has been received (i.e. value is zero).
+**`data.list[].status.lastUpdateTime`** — Unix millisecond timestamp of the most recent real-time update received from the vehicle. Absent when no update has been received.
 
 **`data.list[].status.lastLocationUpdateTime`** — Unix millisecond timestamp of the most recent real-time location update. Absent when no location update has been received.
 
@@ -390,13 +398,13 @@ Present when `includeSchedule` is `true`.
 
 **`data.list[].schedule.timeZone`** — IANA time zone identifier for the agency operating this trip (e.g. `America/Los_Angeles`). Arrival and departure times in `stopTimes` are expressed in seconds from midnight in this zone.
 
-**`data.list[].schedule.stopTimes`** — Ordered list of stop visits for the trip. See `data.list[].schedule.stopTimes[]` below.
+**`data.list[].schedule.stopTimes`** — Ordered list of stop visits for the active trip. See `data.list[].schedule.stopTimes[]` below.
 
-**`data.list[].schedule.previousTripId`** — If this trip is part of a block and is preceded by another trip, the ID of that preceding trip. Absent when there is no predecessor.
+**`data.list[].schedule.previousTripId`** — If the active trip is part of a block and is preceded by another trip, the ID of that preceding trip. Absent when there is no predecessor. When the vehicle is executing an interlined trip, this field may identify the trip on the queried route that caused this block to be selected.
 
-**`data.list[].schedule.nextTripId`** — If this trip is part of a block and is followed by another trip, the ID of that following trip. Absent when there is no successor.
+**`data.list[].schedule.nextTripId`** — If the active trip is part of a block and is followed by another trip, the ID of that following trip. Absent when there is no successor. When the vehicle is about to interline, this field identifies the trip on the next route.
 
-**`data.list[].schedule.frequency`** — Frequency information for the trip if it runs on a frequency-based schedule; absent otherwise.
+**`data.list[].schedule.frequency`** — Frequency information for the active trip if it runs on a frequency-based schedule; absent otherwise.
 
 ---
 
@@ -446,7 +454,7 @@ The existing Markdown documentation (`src/site/markdown/api/where/methods/trips-
 ### Implementation defects only
 
 **Null check targets the wrong variable in `TripStatusBeanServiceImpl.getBlockLocationsAsTripDetails`, around line 424.**
-The loop body reads `if (tripDetails != null)` — which tests the accumulator list (never null) — where `if (details != null)` was intended. As a result, a null `TripDetailsBean` can be appended to the list. The downstream method `BeanFactoryV2.getTripDetailsResponse` explicitly skips null entries, so there is no user-visible effect. A clean reimplementation would naturally avoid this mistake.
+The loop body reads `if (tripDetails != null)` — which tests the accumulator list (never null) — where `if (details != null)` was intended. As a result, a null `TripDetailsBean` (produced when a trip's data is incomplete or a canceled trip is hidden) can be appended to the list. The downstream method `BeanFactoryV2.getTripDetailsResponse` explicitly skips null entries, so there is no user-visible effect. A clean reimplementation would naturally avoid this mistake.
 
 ---
 
