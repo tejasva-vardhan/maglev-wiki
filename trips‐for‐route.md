@@ -1,87 +1,126 @@
 ## Goal in Context
 
-A rider's client application wants to show all transit vehicles currently active on a specific route — their real-time positions, schedule adherence, and upcoming stops — so the rider can decide which trip to board.
+A rider-facing client wants to display which vehicles are currently running (or are about to run) on a specific route, along with their real-time positions, schedule adherence, and stop-time schedules, so passengers can decide when and where to board.
 
 ## Scope
 
-OneBusAway REST API — `trips-for-route` endpoint.
+OneBusAway REST API — `GET /api/where/trips-for-route/{id}.json`
 
 ## Level
 
-User goal.
+User-goal
 
 ## Primary Actor
 
-Rider (via a client application).
+Rider (via a client application)
 
 ## Stakeholders and Interests
 
-- **Rider**: wants an accurate, up-to-date picture of every active trip on the route so they can plan their journey.
+- **Rider**: wants an accurate, up-to-date list of vehicles currently operating or starting soon on a chosen route, including predicted positions and how late or early each vehicle is running.
 
 ## Preconditions
 
 - The caller supplies a valid API key.
-- The route ID identifies a route known to the system.
+- The server has a loaded GTFS data bundle.
 
 ## Minimal Guarantees
 
-- The response envelope is always returned with an appropriate HTTP status code and a machine-readable status code in the body.
-- If the route is outside the service area, an empty list is returned (HTTP 200) rather than an error.
+- The response is always HTTP 200 with a well-formed JSON envelope.
+- When a request targets a route that is outside the server's service area, an empty list is returned with `data.outOfRange` set to `true`.
 
 ## Success Guarantees
 
-- The response contains one entry per active block whose service window intersects the query time range.
-- Each entry reflects the trip the vehicle is currently executing at the requested time, which may belong to a different route than the one queried (see Main Success Scenario step 3).
-- Each entry optionally carries the trip's real-time status, its full stop schedule, and any active service alerts.
-- Referenced entities (trips, routes, agencies, stops, situations) are gathered into the references block.
+- Every block that has a scheduled trip overlapping the active window around the requested time is represented by one entry in `data.list`.
+- Each entry reflects the trip the block is **currently executing** at the requested time, including real-time position and deviation when available.
+- Referenced trips, stops, routes, agencies, and service alerts are fully populated in `data.references` (unless the caller suppresses them with `includeReferences=false`).
 
 ## Trigger
 
-A GET request to `/api/where/trips-for-route/{id}.{format}`.
+`GET /api/where/trips-for-route/{id}.json?key=…`
 
 ## Main Success Scenario
 
-1. The caller issues a GET request with a route ID embedded in the URL path and optional query parameters.
-2. The system resolves the requested time (defaulting to the current server time if none is supplied).
-3. The system identifies all block instances that contain at least one trip on the queried route whose service window intersects the interval from 30 minutes before the requested time to 10 minutes after it. The backward extension captures trips that may be running late; the forward extension captures trips that may be running early. Both windows are operator-configurable. Because a block can link trips serving different routes (interlining), a block matched here may be actively executing a trip on a different route at the requested time.
-4. For each matched block, the system determines which trip the vehicle is currently executing at the requested time (the active trip). The active trip may belong to a different route than the one queried. If real-time vehicle data is available, the vehicle's actual position and state are used; otherwise the vehicle's scheduled position is used.
-5. For each active block, the system assembles a trip details entry using the active trip:
-   - The active trip's ID and the service date (midnight of the operating day, in Unix milliseconds).
-   - A frequency block if the active trip runs on a frequency-based schedule.
-   - The full real-time status of the vehicle (if `includeStatus` is `true`).
-   - The complete stop schedule for the active trip (if `includeSchedule` is `true`).
-   - IDs of any service alerts currently affecting the trip.
-6. If `includeTrip` is `true`, the active trip's record is added to the references block, which transitively pulls in the trip's route and agency. When the active trip belongs to a different route than the one queried, it is that interlined route and its agency that appear in references — not the queried route.
-7. Stops referenced by the status (closest stop, next stop) and by the schedule are added to the references block.
-8. When `includeSchedule` is `true`, the adjacent block trips (the trip immediately before and the trip immediately after the active trip in the block, if any) are also added to the references block. This is how the trip on the queried route appears in references when the vehicle is currently executing an interlined trip on a different route.
-9. Active service alert records are added to the references block.
-10. The system returns HTTP 200 with the list of trip detail entries and the populated references block. No ordering of the result list is guaranteed.
+1. The caller issues a GET request supplying a route ID (path parameter) and optional query parameters for time, inclusion flags, and API key.
+2. The server resolves the reference time: the supplied `time` value if provided; otherwise the current server time.
+3. The server computes an active window extending 30 minutes before and 10 minutes after the reference time. (These defaults are configurable at deployment time.)
+4. The server identifies every block that has at least one trip on the queried route scheduled to overlap that active window.
+5. For each such block, the server determines which trip within that block is currently active at the reference time. This trip becomes the entry's `tripId` and the status `activeTripId`. **Due to interlining, the active trip may belong to a different route than the one queried** — this is expected, intended behaviour (see note below).
+6. For each block, the server assembles a trip detail entry:
+   - `tripId` and `serviceDate` are always included.
+   - The full trip record (headsign, route, direction, etc.) is added to `data.references.trips` when `includeTrip` is `true`.
+   - The real-time `status` block is included when `includeStatus` is `true`.
+   - The `schedule` block (ordered stop times for the active trip, plus adjacent block-trip IDs) is included when `includeSchedule` is `true`.
+   - Service alert IDs applicable to the vehicle journey are listed in `situationIds`; the full alert records appear in `data.references.situations`.
+7. All referenced stops, routes, and agencies are populated in `data.references`.
+8. The server returns HTTP 200 with the assembled list. `data.limitExceeded` is always `false`. The order of entries in `data.list` is non-deterministic.
+
+**Interlining note:** The endpoint selects blocks whose scheduled trips overlap the active window for the queried route. A selected block may, at the moment of the request, be executing a trip that belongs to a different route — because the vehicle is running a sequence of trips across multiple routes without returning to the depot. In that case the entry's `tripId` and status `activeTripId` will reference a trip on the other route, and the `schedule.stopTimes` will cover that other trip's stops. This is not a defect; it accurately reflects what the vehicle is doing.
 
 ## Extensions
 
-**2a. `time` is supplied as a Unix millisecond integer or a formatted date string (`yyyy-MM-dd_HH-mm-ss`).**
-The system uses that value in place of the current server time. Continue from step 3.
+**2a. Route not found / no active blocks:**
+The server finds no blocks matching the queried route and time window. It returns HTTP 200 with `data.list` empty and `data.limitExceeded: false`. `data.outOfRange` is `false`.
 
-**4a. A block is matched via a trip on the queried route, but the vehicle is currently executing a trip on a different route (interlining).**
-The entry's `tripId` is the interlined trip's ID. The entry's schedule, status, and all references reflect that interlined trip and its route. The trip on the queried route that caused the block to be selected appears as the `schedule.previousTripId` or `schedule.nextTripId` (when `includeSchedule` is `true`) and is added to the references block. This is expected behaviour, not a defect.
+**2b. `time` parameter supplied:**
+The server uses the provided timestamp as the reference time instead of the current time. All window calculations proceed from that time. This is useful for testing and replay.
 
-**4b. A trip is marked as canceled and the system is configured to suppress canceled trips.**
-The status object for that trip is omitted from its entry even when `includeStatus` is `true`. The trip entry is still present in the list. See Suspected Defects.
+**5a. Block has no active trip at the reference time:**
+If the block location cannot resolve an active trip instance (e.g. the block is between trips), the entry is silently omitted from the result.
 
-**4c. A trip's data is incomplete (its trip record or stop times cannot be loaded).**
-That trip is silently excluded from the result list.
+**6a. `includeStatus=false`:**
+The `status` key is absent from the entry (not null — absent entirely).
 
-**4d. The block is not currently in service at the requested time.**
-Even if the block was selected in step 3, if the block is not executing any trip at the requested time (for example, its last trip ended before the query time), it is excluded from results.
+**6b. `includeSchedule=false`:**
+The `schedule` key is absent from the entry.
 
-**5a. The route is outside the service area.**
-The system catches the out-of-area condition and returns HTTP 200 with an empty list and `outOfRange: true`.
+**6c. `includeTrip=false`:**
+The trip record is not added to `data.references.trips`. The `tripId` field is still present in the entry.
 
-**5b. The `id` path parameter is absent.**
-The system returns HTTP 400 with a validation error body.
+**6d. No real-time data available for a vehicle:**
+`status.predicted` is `false`. Position and orientation are computed from the static schedule. `status.scheduleDeviation` is `0`. `status.vehicleId` is an empty string.
 
-**5c. A `version` other than `2` is supplied.**
-The system returns HTTP 500 with an "unknown version" error body.
+**6e. Trip is frequency-based:**
+A `frequency` object is included at both the entry level and within `status`, describing the headway interval.
+
+**6f. Active trip has a preceding trip in the same block:**
+`schedule.previousTripId` is populated with that preceding trip's ID. The preceding trip is added to `data.references.trips`.
+
+**6g. Active trip has a following trip in the same block:**
+`schedule.nextTripId` is populated. The following trip is added to `data.references.trips`.
+
+**6h. `includeReferences=false`:**
+`data.references` is still present in the response but all arrays within it are empty.
+
+**Error — missing route ID:**
+The Struts framework returns HTTP 404 before the action is reached.
+
+**Error — wrong API version:**
+If the `version` parameter is present and not `2`, the server returns HTTP 500 with code `500` and `text: "unknown version: N"`.
+
+**Error — validation failure (e.g. bad field type):**
+The server returns HTTP 400 with code `400` and a validation error body.
+
+## Suspected Defects
+
+### Defects that affect the use case
+
+**`maxCount` parameter is accepted but has no effect**
+`TripsForRouteAction.java` (lines 78–80) accepts a `maxCount` parameter and passes it into the query bean via `query.setMaxCount(...)`. However, `TripStatusBeanServiceImpl.getTripsForRoute()` (line 231) reads only the inclusion and time fields from the query; it never reads `getMaxCount()`. No result capping is applied regardless of the value the caller supplies. The `data.limitExceeded` flag is hardcoded to `false`. A Go reimplementation should either remove the parameter or implement actual capping.
+
+**`includeStatus` and `includeSchedule` documented defaults are wrong**
+The existing method documentation (`src/site/markdown/api/where/methods/trips-for-route.md`) states that `includeStatus` and `includeSchedule` default to `false`. In the Java code (`TripsForRouteAction.java` lines 54–58), all three inclusion flags — `includeTrip`, `includeStatus`, and `includeSchedule` — are initialised to `true`. The live server confirms all three are included by default. A Go implementation should use `true` as the default for all three.
+
+### Implementation defects only
+
+**Wrong null guard in `TripStatusBeanServiceImpl.getBlockLocationsAsTripDetails()` (~line 424)**
+The method checks `if (tripDetails != null)` before adding to the result list, where `tripDetails` is the accumulator list itself — it is never null. The intended check was `if (details != null)`. As a result, null `TripDetailsBean` values (produced when a block has no active trip instance) are added to the list. `BeanFactoryV2.getTripDetailsResponse()` filters them out with its own `if (trip != null)` guard, so the observable output is unaffected. A clean reimplementation would simply omit the null guard on the list or place it correctly.
+
+**`lastKnownLocation` set twice in `TripStatusBeanServiceImpl.getBlockLocationAsStatusBean()` (lines 270 and 276)**
+`bean.setLastKnownLocation(blockLocation.getLastKnownLocation())` is called at line 270 and again at line 276–278 (inside a conditional block that also sets orientation). The second call produces the same value as the first and overwrites it without effect. No observable difference at the API boundary.
+
+## Open Questions
+
+None. All observable behaviours were resolved by static analysis of the full call chain and confirmed with live server requests against KCM data.
 
 ---
 
@@ -90,70 +129,70 @@ The system returns HTTP 500 with an "unknown version" error body.
 ```json
 {
   "type": "object",
-  "required": ["id"],
+  "required": ["id", "key"],
   "properties": {
     "id": {
       "type": "string",
-      "description": "Route ID, embedded in the URL path: /api/where/trips-for-route/{id}.{format}"
+      "description": "Agency-qualified route ID, encoded in the URL path: /api/where/trips-for-route/{id}.json"
     },
     "key": {
       "type": "string",
-      "description": "API key."
+      "description": "API key"
     },
     "time": {
-      "type": "string",
-      "description": "The point in time for which active trips are computed. Accepts a Unix millisecond timestamp (integer string) or a formatted date-time string (yyyy-MM-dd_HH-mm-ss). Defaults to the server's current time."
+      "type": "integer",
+      "description": "Unix ms. Reference time for the query. Defaults to server current time."
     },
     "includeTrip": {
       "type": "boolean",
       "default": true,
-      "description": "Whether to load each active trip's record into the references block."
+      "description": "Whether to populate trip records in data.references.trips."
     },
     "includeStatus": {
       "type": "boolean",
       "default": true,
-      "description": "Whether to include the real-time status block in each trip entry."
+      "description": "Whether to include the real-time status block in each entry."
     },
     "includeSchedule": {
       "type": "boolean",
       "default": true,
-      "description": "Whether to include the stop-time schedule in each trip entry."
+      "description": "Whether to include the stop-time schedule in each entry."
     },
     "maxCount": {
       "type": "integer",
-      "description": "Accepted for compatibility but not applied — see Suspected Defects. All matching trips are always returned."
+      "description": "Accepted but has no effect. No result capping is applied. See Suspected Defects."
     },
     "includeReferences": {
       "type": "boolean",
       "default": true,
-      "description": "Whether to populate the references block."
+      "description": "If false, data.references is returned with all arrays empty."
     },
     "version": {
       "type": "integer",
       "default": 2,
-      "description": "API version. Only 2 is valid. Any other value produces an error response."
+      "description": "API version. Only 2 is supported; other values produce HTTP 500."
     }
   }
 }
 ```
 
-**`id`** — The route's compound identifier in `{agencyId}_{routeId}` form, URL-encoded in the path. Required.
+**`id`** — Agency-qualified route ID in the URL path, e.g. `1_100018`. The agency prefix and the underscore separator are required.
 
-**`key`** — API access key. Required by the API infrastructure.
+**`key`** — API key. Required for all requests.
 
-**`time`** — Point in time used to determine which trips are active. Accepts either a plain integer (Unix milliseconds) or a date-time string in `yyyy-MM-dd_HH-mm-ss` format. When omitted, the server's current time is used.
+**`time`** — Unix timestamp in milliseconds. Shifts the reference point for the active-window calculation. Primarily useful for testing historical snapshots.
 
-**`includeTrip`** — When `true` (the default), each active trip's record is placed in the `references.trips` block, which transitively adds the trip's route and agency. When the active trip belongs to an interlined route, that interlined route appears in references. When `false`, no trip records are loaded into references via this flag (though the status path may still add the active trip; see Response Structure).
+**`includeTrip`** — When `true` (the default), full trip records (headsign, route ID, direction, shape ID, etc.) are placed in `data.references.trips` for every trip referenced by the response — including the active trips and any preceding/following block trips. When `false`, the trip bean is not fetched and `data.references.trips` will be empty.
 
-**`includeStatus`** — When `true` (the default), each trip entry includes a `status` object containing the vehicle's real-time position and schedule deviation. When `false`, the `status` field is absent.
+**`includeStatus`** — When `true` (the default), each entry contains a `status` block with the vehicle's current position, deviation, and occupancy. When `false`, the `status` key is absent from the entry.
 
-**`includeSchedule`** — When `true` (the default), each trip entry includes a `schedule` object with the full ordered list of stop times for the active trip, plus the IDs of the immediately adjacent block trips. When `false`, the `schedule` field is absent.
+**`includeSchedule`** — When `true` (the default), each entry contains a `schedule` block with the full ordered stop sequence for the active trip, plus IDs for adjacent block trips. When `false`, the `schedule` key is absent.
 
-**`maxCount`** — Accepted and parsed but never applied. The result set is never capped regardless of this value. See Suspected Defects.
+**`maxCount`** — Intended to cap the number of results. Has no effect due to a defect; all matching blocks are always returned. See Suspected Defects.
 
-**`includeReferences`** — When `false`, the `references` block is returned empty. Default is `true`.
+**`includeReferences`** — Controls whether `data.references` is populated. When `false`, the `references` object is still present but all arrays inside it are empty.
 
-**`version`** — Selects the response format version. The only supported value is `2`. Omitting it is equivalent to passing `2`. Any other value returns an HTTP 500 error.
+**`version`** — Only `2` is accepted. Any other value produces HTTP 500 with `text: "unknown version: N"`.
 
 ---
 
@@ -165,24 +204,24 @@ The system returns HTTP 500 with an "unknown version" error body.
 {
   "type": "object",
   "properties": {
-    "version": { "type": "integer" },
-    "code": { "type": "integer" },
+    "code":        { "type": "integer" },
+    "text":        { "type": "string" },
+    "version":     { "type": "integer" },
     "currentTime": { "type": "integer", "description": "Unix ms" },
-    "text": { "type": "string" },
-    "data": { "type": "object" }
+    "data":        { "type": "object" }
   }
 }
 ```
 
+**`code`** — HTTP-equivalent status code. Always `200` for a successful response.
+
+**`text`** — Human-readable status. `"OK"` on success.
+
 **`version`** — Always `2`.
 
-**`code`** — HTTP-style status code: `200` on success, `400` for a missing or invalid `id`, `500` for an unknown version.
+**`currentTime`** — Server wall-clock time at the moment the response was generated, in Unix milliseconds.
 
-**`currentTime`** — The server's wall-clock time at the moment the response was generated, in Unix milliseconds.
-
-**`text`** — Human-readable status phrase corresponding to `code`.
-
-**`data`** — The payload object; see below.
+**`data`** — The response payload object.
 
 ---
 
@@ -192,219 +231,186 @@ The system returns HTTP 500 with an "unknown version" error body.
 {
   "type": "object",
   "properties": {
-    "list": {
-      "type": "array",
-      "items": { "type": "object" }
-    },
-    "limitExceeded": { "type": "boolean" },
-    "outOfRange": { "type": "boolean" },
-    "references": { "type": "object" }
+    "list":           { "type": "array", "items": { "type": "object" } },
+    "limitExceeded":  { "type": "boolean" },
+    "outOfRange":     { "type": "boolean" },
+    "references":     { "type": "object" }
   }
 }
 ```
 
-**`data.list`** — Array of trip detail entries; see `data.list[]` below.
+**`data.list`** — Array of trip detail entries, one per active block. Order is non-deterministic.
 
-**`data.limitExceeded`** — Always `false`. The service layer does not apply a cap to results for this endpoint, so the flag is never set. See Suspected Defects (`maxCount`).
+**`data.limitExceeded`** — Always `false`. No result cap is applied (see Suspected Defects).
 
-**`data.outOfRange`** — `true` when the route falls outside the system's service area (the list is empty in this case). Otherwise `false`.
+**`data.outOfRange`** — `true` only if the server throws an out-of-service-area error, which does not occur for unknown or inactive routes in practice. A route with no active blocks returns an empty list with `outOfRange: false`.
 
-**`data.references`** — Collected referenced entities. Contains sub-objects `agencies`, `routes`, `trips`, `stops`, and `situations`, each an array of the corresponding entity records. Populated as described in the main scenario. Empty when `includeReferences=false`.
+**`data.references`** — Lookup tables for all entities referenced by ID within `data.list`. Populated when `includeReferences=true` (the default). When `includeReferences=false`, the object is present but all arrays are empty.
 
 ---
 
 ### data.list[]
 
-One entry per active block. Each entry is built from the trip the vehicle is currently executing at the requested time; that trip may belong to a route other than the one queried.
-
 ```json
 {
   "type": "object",
   "properties": {
-    "tripId": { "type": "string" },
-    "serviceDate": { "type": "integer", "description": "Unix ms" },
-    "frequency": { "type": "object" },
-    "status": { "type": "object" },
-    "schedule": { "type": "object" },
-    "situationIds": {
-      "type": "array",
-      "items": { "type": "string" }
-    }
+    "tripId":       { "type": "string" },
+    "serviceDate":  { "type": "integer", "description": "Unix ms" },
+    "frequency":    { "type": "object" },
+    "situationIds": { "type": "array", "items": { "type": "string" } },
+    "status":       { "type": "object" },
+    "schedule":     { "type": "object" }
   }
 }
 ```
 
-**`data.list[].tripId`** — The ID of the trip the vehicle is actively executing at the requested time. Because a block can link trips on multiple routes, this trip may belong to a different route than the one queried. When the vehicle is interlined, this field carries the interlined trip's ID, not the queried route's trip ID.
+**`data.list[].tripId`** — ID of the trip the block is executing at the reference time. This is the *active* trip — which may belong to a route other than the one queried if the block is interlined.
 
-**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the operating day for the active trip.
+**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight on the service date for this block instance. Times in the schedule are expressed in seconds elapsed since this moment.
 
-**`data.list[].frequency`** — Present only for frequency-based trips. See `data.list[].frequency` below.
+**`data.list[].frequency`** — Frequency-based service descriptor. Present only for trips that run on a headway schedule; `null` for fixed-schedule trips.
 
-**`data.list[].status`** — Present when `includeStatus` is `true` and the trip has a computable real-time state. Absent when `includeStatus` is `false`, or when a canceled trip is hidden by operator configuration. See `data.list[].status` below.
+**`data.list[].situationIds`** — Array of service alert IDs applicable to this vehicle journey. Full alert records are in `data.references.situations`. Empty array when no alerts apply.
 
-**`data.list[].schedule`** — Present when `includeSchedule` is `true`. See `data.list[].schedule` below.
+**`data.list[].status`** — Real-time status of the vehicle. Absent (key not present) when `includeStatus=false`. See `data.list[].status` schema below.
 
-**`data.list[].situationIds`** — IDs of service alerts currently affecting this trip. Absent when there are none. Each ID matches an entry in `data.references.situations`.
-
----
-
-### data.list[].frequency
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "startTime": { "type": "integer", "description": "Unix ms" },
-    "endTime": { "type": "integer", "description": "Unix ms" },
-    "headway": { "type": "integer" },
-    "exactTimes": { "type": "integer" }
-  }
-}
-```
-
-**`data.list[].frequency.startTime`** — Start of the frequency window, in Unix milliseconds.
-
-**`data.list[].frequency.endTime`** — End of the frequency window, in Unix milliseconds.
-
-**`data.list[].frequency.headway`** — Scheduled headway in seconds.
-
-**`data.list[].frequency.exactTimes`** — `1` if departures are locked to exact times within the headway; `0` otherwise.
+**`data.list[].schedule`** — Scheduled stop-time sequence for the active trip. Absent (key not present) when `includeSchedule=false`. See `data.list[].schedule` schema below.
 
 ---
 
 ### data.list[].status
 
-Present when `includeStatus` is `true`.
-
 ```json
 {
   "type": "object",
   "properties": {
-    "activeTripId": { "type": "string" },
-    "blockTripSequence": { "type": "integer" },
-    "serviceDate": { "type": "integer", "description": "Unix ms" },
-    "frequency": { "type": "object" },
-    "scheduledDistanceAlongTrip": { "type": "number" },
-    "totalDistanceAlongTrip": { "type": "number" },
-    "position": { "type": "object" },
-    "orientation": { "type": "number" },
-    "closestStop": { "type": "string" },
-    "closestStopTimeOffset": { "type": "integer" },
-    "nextStop": { "type": "string" },
-    "nextStopTimeOffset": { "type": "integer" },
-    "phase": { "type": "string" },
-    "status": { "type": "string" },
-    "predicted": { "type": "boolean" },
-    "lastUpdateTime": { "type": "integer", "description": "Unix ms" },
-    "lastLocationUpdateTime": { "type": "integer", "description": "Unix ms" },
-    "lastKnownDistanceAlongTrip": { "type": "number" },
-    "lastKnownLocation": { "type": "object" },
-    "lastKnownOrientation": { "type": "number" },
-    "scheduleDeviation": { "type": "integer" },
-    "distanceAlongTrip": { "type": "number" },
-    "vehicleId": { "type": "string" },
-    "situationIds": {
-      "type": "array",
-      "items": { "type": "string" }
+    "activeTripId":                { "type": "string" },
+    "blockTripSequence":           { "type": "integer" },
+    "serviceDate":                 { "type": "integer", "description": "Unix ms" },
+    "scheduledDistanceAlongTrip":  { "type": "number" },
+    "totalDistanceAlongTrip":      { "type": "number" },
+    "position": {
+      "type": "object",
+      "properties": {
+        "lat": { "type": "number" },
+        "lon": { "type": "number" }
+      }
     },
-    "occupancyStatus": { "type": "string" },
-    "occupancyCount": { "type": "integer" },
-    "occupancyCapacity": { "type": "integer" },
-    "vehicleFeatures": {
-      "type": "array",
-      "items": { "type": "string" }
-    }
+    "orientation":                 { "type": "number" },
+    "closestStop":                 { "type": "string" },
+    "closestStopTimeOffset":       { "type": "integer" },
+    "nextStop":                    { "type": "string" },
+    "nextStopTimeOffset":          { "type": "integer" },
+    "phase":                       { "type": "string" },
+    "status":                      { "type": "string" },
+    "predicted":                   { "type": "boolean" },
+    "lastUpdateTime":              { "type": "integer", "description": "Unix ms" },
+    "lastLocationUpdateTime":      { "type": "integer", "description": "Unix ms" },
+    "lastKnownDistanceAlongTrip":  { "type": "number" },
+    "lastKnownLocation": {
+      "type": "object",
+      "properties": {
+        "lat": { "type": "number" },
+        "lon": { "type": "number" }
+      }
+    },
+    "lastKnownOrientation":        { "type": "number" },
+    "scheduleDeviation":           { "type": "integer" },
+    "distanceAlongTrip":           { "type": "number" },
+    "vehicleId":                   { "type": "string" },
+    "occupancyStatus":             { "type": "string" },
+    "occupancyCount":              { "type": "integer" },
+    "occupancyCapacity":           { "type": "integer" },
+    "vehicleFeatures":             { "type": "array", "items": { "type": "string" } },
+    "situationIds":                { "type": "array", "items": { "type": "string" } },
+    "frequency":                   { "type": "object" }
   }
 }
 ```
 
-**`data.list[].status.activeTripId`** — The ID of the trip the vehicle is currently executing. For this endpoint, this field always equals the entry's `tripId`: both are derived from the same active trip at the requested time. The active trip is added to the references block regardless of the `includeTrip` flag.
+**`data.list[].status.activeTripId`** — Trip ID of the trip the vehicle is actively serving. Identical to the entry-level `tripId`.
 
-**`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within its block's ordered trip sequence. `-1` when not set.
+**`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within its block's ordered trip sequence. Useful for comparing against block data.
 
-**`data.list[].status.serviceDate`** — Unix millisecond timestamp of midnight at the start of the operating day for the active trip.
+**`data.list[].status.serviceDate`** — Unix milliseconds of midnight on the service date.
 
-**`data.list[].status.frequency`** — Frequency window for the active trip if it runs on a frequency-based schedule; absent otherwise.
+**`data.list[].status.scheduledDistanceAlongTrip`** — Meters the vehicle is scheduled to have progressed along the active trip at the reference time. Computed from the static schedule when real-time data is unavailable.
 
-**`data.list[].status.scheduledDistanceAlongTrip`** — How far, in metres, the vehicle is scheduled to have travelled along the active trip at the requested time. Absent when the trip is not in progress.
+**`data.list[].status.totalDistanceAlongTrip`** — Total length of the active trip in meters.
 
-**`data.list[].status.totalDistanceAlongTrip`** — Total length of the active trip in metres.
+**`data.list[].status.position`** — Current latitude and longitude. When `predicted=false`, this is the schedule-derived position; when `predicted=true`, it reflects real-time GPS data (potentially extrapolated forward from the last known fix).
 
-**`data.list[].status.position`** — Current position of the vehicle as `{ "lat": number, "lon": number }`. Present when a position can be computed (from real-time data or schedule extrapolation). Absent when the vehicle's location is unknown.
+**`data.list[].status.orientation`** — Compass bearing in degrees, where 0° is east, 90° is north, 180° is west, and 270° is south. May be absent if not available.
 
-**`data.list[].status.orientation`** — Compass heading in degrees, where 0° is east, 90° is north, 180° is west, 270° is south. Absent when unknown.
+**`data.list[].status.closestStop`** — Stop ID of the stop closest to the vehicle's current position along the trip. Added to `data.references.stops`.
 
-**`data.list[].status.closestStop`** — ID of the stop nearest to the vehicle's current location. Absent when no stop is identified.
+**`data.list[].status.closestStopTimeOffset`** — Seconds between the scheduled time at the closest stop and the vehicle's current position. Positive means the stop is ahead; negative means it has been passed.
 
-**`data.list[].status.closestStopTimeOffset`** — Seconds between the vehicle's current position and the closest stop. Positive means the stop is ahead; negative means the stop has been passed.
+**`data.list[].status.nextStop`** — Stop ID of the next upcoming stop. Absent if the vehicle has passed the last stop. Added to `data.references.stops`.
 
-**`data.list[].status.nextStop`** — ID of the next stop the vehicle will serve. Absent when the vehicle has passed the last stop in the trip.
+**`data.list[].status.nextStopTimeOffset`** — Seconds to the scheduled time at the next stop.
 
-**`data.list[].status.nextStopTimeOffset`** — Seconds until the vehicle reaches the next stop.
+**`data.list[].status.phase`** — A label describing the vehicle's current journey phase (e.g. in-progress, layover). Empty string when no real-time data is available.
 
-**`data.list[].status.phase`** — A string describing the current operational phase of the trip (e.g. `in_progress`, `layover_before`, `deadhead_before`).
+**`data.list[].status.status`** — A status modifier for the trip. `"default"` for normally operating trips; `"canceled"` for cancelled trips (only present when cancelled-trip reporting is enabled).
 
-**`data.list[].status.status`** — A modifier string for the trip. `"default"` for normal operation; `"canceled"` when the trip has been canceled (only present when the operator has not configured canceled trips to be hidden).
+**`data.list[].status.predicted`** — `true` if real-time GPS data was used to compute the vehicle position; `false` if the position is derived from the static schedule.
 
-**`data.list[].status.predicted`** — `true` if real-time arrival information is available for this trip.
+**`data.list[].status.lastUpdateTime`** — Unix milliseconds of the most recent real-time update received from the vehicle. `0` if no real-time data has ever been received.
 
-**`data.list[].status.lastUpdateTime`** — Unix millisecond timestamp of the most recent real-time update received from the vehicle. Absent when no update has been received.
+**`data.list[].status.lastLocationUpdateTime`** — Unix milliseconds of the most recent real-time update that contained a GPS location. `0` if no location update has been received.
 
-**`data.list[].status.lastLocationUpdateTime`** — Unix millisecond timestamp of the most recent real-time location update. Absent when no location update has been received.
+**`data.list[].status.lastKnownDistanceAlongTrip`** — Distance in meters along the active trip as reported in the most recent real-time fix. Absent if no real-time location has been received.
 
-**`data.list[].status.lastKnownDistanceAlongTrip`** — The last raw distance-along-trip reading received from the vehicle, in metres. Absent when not available.
+**`data.list[].status.lastKnownLocation`** — Latitude and longitude from the most recent real-time GPS fix. This differs from `position`, which may be extrapolated forward; `lastKnownLocation` is the raw last report. `null` if no location update has been received.
 
-**`data.list[].status.lastKnownLocation`** — The vehicle's last directly reported position as `{ "lat": number, "lon": number }`. Differs from `position`, which may be extrapolated forward. Absent when no location report has been received.
+**`data.list[].status.lastKnownOrientation`** — Bearing from the most recent real-time fix. Absent if not available.
 
-**`data.list[].status.lastKnownOrientation`** — The vehicle's last directly reported heading in degrees. Absent when not available.
+**`data.list[].status.scheduleDeviation`** — How many seconds late (positive) or early (negative) the vehicle is running at the reference time. `0` when `predicted=false`.
 
-**`data.list[].status.scheduleDeviation`** — Seconds by which the trip is deviating from schedule. Positive means late; negative means early. Absent when no real-time data is available.
+**`data.list[].status.distanceAlongTrip`** — Meters the vehicle has actually progressed along the active trip. May be extrapolated from the last known position when real-time data is stale.
 
-**`data.list[].status.distanceAlongTrip`** — How far, in metres, the vehicle has actually travelled along the active trip. May be extrapolated from the last known reading. Absent when not available.
+**`data.list[].status.vehicleId`** — Opaque agency-assigned vehicle identifier. Empty string when no real-time data is available.
 
-**`data.list[].status.vehicleId`** — Compound identifier of the vehicle serving the trip. Absent when real-time data is unavailable or no vehicle is assigned.
+**`data.list[].status.occupancyStatus`** — GTFS-RT `OccupancyStatus` enum name (e.g. `"MANY_SEATS_AVAILABLE"`, `"FULL"`). Empty string when occupancy data is unavailable.
 
-**`data.list[].status.situationIds`** — IDs of service alerts currently affecting the vehicle's active trip. Absent when there are none.
+**`data.list[].status.occupancyCount`** — Raw passenger count reported by the vehicle. `-1` when unavailable.
 
-**`data.list[].status.occupancyStatus`** — GTFS-Realtime `OccupancyStatus` enum name (e.g. `MANY_SEATS_AVAILABLE`, `FEW_SEATS_AVAILABLE`, `FULL`). Absent when occupancy data is unavailable.
+**`data.list[].status.occupancyCapacity`** — Total passenger capacity of the vehicle. `-1` when unavailable.
 
-**`data.list[].status.occupancyCount`** — Raw passenger count from an automatic passenger counter. `-1` when no data is available.
+**`data.list[].status.vehicleFeatures`** — Array of feature strings reported for the vehicle (e.g. accessibility features). Empty array when none are reported.
 
-**`data.list[].status.occupancyCapacity`** — Declared vehicle capacity. `-1` when not configured.
+**`data.list[].status.situationIds`** — Service alert IDs specifically applicable to this vehicle's journey at the reference time. Full alert records are in `data.references.situations`.
 
-**`data.list[].status.vehicleFeatures`** — List of feature strings describing equipment on the vehicle (e.g. accessibility features). Absent when none are reported.
+**`data.list[].status.frequency`** — Frequency descriptor for the active trip, if it runs on a headway schedule. `null` for fixed-schedule trips.
 
 ---
 
 ### data.list[].schedule
 
-Present when `includeSchedule` is `true`.
-
 ```json
 {
   "type": "object",
   "properties": {
-    "timeZone": { "type": "string" },
-    "stopTimes": {
-      "type": "array",
-      "items": { "type": "object" }
-    },
+    "timeZone":      { "type": "string" },
+    "stopTimes":     { "type": "array", "items": { "type": "object" } },
     "previousTripId": { "type": "string" },
-    "nextTripId": { "type": "string" },
-    "frequency": { "type": "object" }
+    "nextTripId":     { "type": "string" },
+    "frequency":      { "type": "object" }
   }
 }
 ```
 
-**`data.list[].schedule.timeZone`** — IANA time zone identifier for the agency operating this trip (e.g. `America/Los_Angeles`). Arrival and departure times in `stopTimes` are expressed in seconds from midnight in this zone.
+**`data.list[].schedule.timeZone`** — IANA timezone identifier for the agency that operates this trip (e.g. `"America/Los_Angeles"`). All times in `stopTimes` are seconds elapsed since midnight in this timezone on the service date.
 
-**`data.list[].schedule.stopTimes`** — Ordered list of stop visits for the active trip. See `data.list[].schedule.stopTimes[]` below.
+**`data.list[].schedule.stopTimes`** — Ordered sequence of stops for the active trip.
 
-**`data.list[].schedule.previousTripId`** — If the active trip is part of a block and is preceded by another trip, the ID of that preceding trip. Absent when there is no predecessor. When the vehicle is executing an interlined trip, this field may identify the trip on the queried route that caused this block to be selected.
+**`data.list[].schedule.previousTripId`** — Trip ID of the trip that immediately precedes the active trip in the block sequence. Present regardless of whether the preceding trip is on the same or a different route. Absent if the active trip is the first in the block. The trip record is added to `data.references.trips`.
 
-**`data.list[].schedule.nextTripId`** — If the active trip is part of a block and is followed by another trip, the ID of that following trip. Absent when there is no successor. When the vehicle is about to interline, this field identifies the trip on the next route.
+**`data.list[].schedule.nextTripId`** — Trip ID of the trip that immediately follows the active trip in the block sequence. Absent if the active trip is the last in the block. The trip record is added to `data.references.trips`.
 
-**`data.list[].schedule.frequency`** — Frequency information for the active trip if it runs on a frequency-based schedule; absent otherwise.
+**`data.list[].schedule.frequency`** — Frequency descriptor for the active trip if it runs on a headway schedule.
 
 ---
 
@@ -414,50 +420,54 @@ Present when `includeSchedule` is `true`.
 {
   "type": "object",
   "properties": {
-    "arrivalTime": { "type": "integer" },
-    "departureTime": { "type": "integer" },
-    "stopId": { "type": "string" },
-    "stopHeadsign": { "type": "string" },
-    "distanceAlongTrip": { "type": "number" },
+    "stopId":             { "type": "string" },
+    "arrivalTime":        { "type": "integer" },
+    "departureTime":      { "type": "integer" },
+    "distanceAlongTrip":  { "type": "number" },
+    "stopHeadsign":       { "type": "string" },
     "historicalOccupancy": { "type": "string" }
   }
 }
 ```
 
-**`data.list[].schedule.stopTimes[].arrivalTime`** — Scheduled arrival time, in seconds elapsed since midnight of the service date (in the trip's time zone). These are static scheduled times; real-time adjustments are not reflected here.
+**`data.list[].schedule.stopTimes[].stopId`** — Stop ID. The corresponding stop record is added to `data.references.stops`.
 
-**`data.list[].schedule.stopTimes[].departureTime`** — Scheduled departure time, in seconds elapsed since midnight of the service date.
+**`data.list[].schedule.stopTimes[].arrivalTime`** — Scheduled arrival time at this stop, in seconds elapsed since midnight on the service date. Values ≥ 86,400 indicate a time on the next calendar day.
 
-**`data.list[].schedule.stopTimes[].stopId`** — Compound identifier of the stop. Matches an entry in `data.references.stops`.
+**`data.list[].schedule.stopTimes[].departureTime`** — Scheduled departure time at this stop, in seconds elapsed since midnight on the service date.
 
-**`data.list[].schedule.stopTimes[].stopHeadsign`** — An override headsign for this specific stop visit, if the GTFS data specifies one. Absent when the trip's default headsign applies.
+**`data.list[].schedule.stopTimes[].distanceAlongTrip`** — Cumulative distance in meters from the trip's first stop to this stop, derived from the GTFS shape.
 
-**`data.list[].schedule.stopTimes[].distanceAlongTrip`** — Distance in metres from the start of the trip to this stop.
+**`data.list[].schedule.stopTimes[].stopHeadsign`** — The headsign text shown on the vehicle at this specific stop, if the route-pattern narrative defines one. Empty string if not defined.
 
-**`data.list[].schedule.stopTimes[].historicalOccupancy`** — Historical occupancy level at this stop, expressed as a GTFS-Realtime `OccupancyStatus` name, if available. Absent when no historical data exists.
-
----
-
-## Suspected Defects
-
-### Defects that affect the use case
-
-**`maxCount` is accepted but never applied — `TripsForRouteAction`, line 109.**
-The action parses `maxCount` and writes it to the query bean, but the service layer (`TripStatusBeanServiceImpl.getTripsForRoute`) never reads the query's count field when calling the block calendar. All matching trips are always returned, and `data.limitExceeded` is always `false`. A Go implementation should either honour the parameter as documented or remove it from the parameter list entirely.
-
-**Canceled trips remain in the list when hidden by operator configuration — `TripStatusBeanServiceImpl.getBlockLocationAsStatusBean`, around line 254.**
-When the operator configures the system to suppress canceled trips, `getBlockLocationAsStatusBean` returns `null` for those trips. The calling code treats a null status as absent rather than as a signal to exclude the trip from results. Consequently, canceled trips still appear in the list with no `status` block even when `includeStatus` is `true`. The likely intent is that hidden canceled trips should be excluded from the list entirely. A Go implementation should decide whether to replicate this behaviour (for client compatibility) or exclude them.
-
-**Documented defaults for `includeStatus`, `includeSchedule`, and `includeTrip` are wrong.**
-The existing Markdown documentation (`src/site/markdown/api/where/methods/trips-for-route.md`) states that `includeStatus` and `includeSchedule` default to `false`, and does not mention `includeTrip`. The code (`TripsForRouteAction`, lines 54–58) initialises all three to `true`. The code is authoritative.
-
-### Implementation defects only
-
-**Null check targets the wrong variable in `TripStatusBeanServiceImpl.getBlockLocationsAsTripDetails`, around line 424.**
-The loop body reads `if (tripDetails != null)` — which tests the accumulator list (never null) — where `if (details != null)` was intended. As a result, a null `TripDetailsBean` (produced when a trip's data is incomplete or a canceled trip is hidden) can be appended to the list. The downstream method `BeanFactoryV2.getTripDetailsResponse` explicitly skips null entries, so there is no user-visible effect. A clean reimplementation would naturally avoid this mistake.
+**`data.list[].schedule.stopTimes[].historicalOccupancy`** — Historical average load at this stop for this route, expressed as a GTFS-RT `OccupancyStatus` enum name. Empty string if no historical data is available.
 
 ---
 
-## Open Questions
+### data.references
 
-**Trip selection window defaults.** The backward window (30 minutes) and forward window (10 minutes) are annotated as `@ConfigurationParameter`, meaning operators can override them at deployment time. The spec documents the compiled-in defaults. Actual production window values depend on the deployment configuration and may differ.
+```json
+{
+  "type": "object",
+  "properties": {
+    "agencies":   { "type": "array", "items": { "type": "object" } },
+    "routes":     { "type": "array", "items": { "type": "object" } },
+    "trips":      { "type": "array", "items": { "type": "object" } },
+    "stops":      { "type": "array", "items": { "type": "object" } },
+    "situations": { "type": "array", "items": { "type": "object" } },
+    "stopTimes":  { "type": "array", "items": { "type": "object" } }
+  }
+}
+```
+
+**`data.references.agencies`** — Full agency records for every agency that operates a trip referenced in the response.
+
+**`data.references.routes`** — Full route records for every trip referenced in the response.
+
+**`data.references.trips`** — Full trip records for: each entry's active trip (when `includeTrip=true`), each `schedule.previousTripId`, and each `schedule.nextTripId`. When interlining is present, this array will contain trips belonging to routes other than the queried route.
+
+**`data.references.stops`** — Full stop records for every stop in every `schedule.stopTimes` array (when `includeSchedule=true`), plus `status.closestStop` and `status.nextStop` (when `includeStatus=true`).
+
+**`data.references.situations`** — Full service alert records for every situation ID referenced in entry-level `situationIds` or status-level `situationIds`.
+
+**`data.references.stopTimes`** — Always an empty array for this endpoint. Present for schema consistency.
