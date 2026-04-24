@@ -1,3 +1,5 @@
+**DRAFT - DO NOT IMPLEMENT**
+
 ## Goal in Context
 
 A rider wants to see a departure board for a specific stop — every approaching vehicle, its scheduled and predicted arrival and departure times, and any service disruptions — so they can decide when to travel. A secondary, more targeted goal is to retrieve a single arrival-and-departure entry for a specific trip instance at a stop, enabling a client to refresh one entry without reloading the entire board.
