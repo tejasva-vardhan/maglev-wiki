@@ -1,3 +1,6 @@
+**DRAFT - DO NOT IMPLEMENT**
+
+
 **Endpoint:** `GET /api/where/trips-for-location.json`
 
 ---
