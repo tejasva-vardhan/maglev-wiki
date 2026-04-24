@@ -1,3 +1,6 @@
+**DRAFT - DO NOT IMPLEMENT**
+
+
 ## Goal in Context
 
 A rider-facing client wants to display which vehicles are currently running (or are about to run) on a specific route, along with their real-time positions, schedule adherence, and stop-time schedules, so passengers can decide when and where to board.
