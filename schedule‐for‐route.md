@@ -1,3 +1,6 @@
+**DRAFT - DO NOT IMPLEMENT**
+
+
 ## Goal in Context
 
 A rider using a transit app wants to see the full timetable for a route on a specific day — every trip, in both directions, with all scheduled stop times — so they can plan travel or understand the route's service span.
