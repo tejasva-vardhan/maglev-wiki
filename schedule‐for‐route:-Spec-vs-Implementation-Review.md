@@ -1,3 +1,6 @@
+**DRAFT - DO NOT IMPLEMENT**
+
+
 ## Bugs in the Implementation
 
 ### 1. `references.trips[].routeId` and `references.trips[].serviceId` not combined
