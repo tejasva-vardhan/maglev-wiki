@@ -1,4 +1,5 @@
 * Api Specs
+- [[agency]]
 - [[agencies‐with‐coverage]]
 - [[arrivals‐and‐departures‐for‐stop]]
 - [[schedule‐for‐route]]
