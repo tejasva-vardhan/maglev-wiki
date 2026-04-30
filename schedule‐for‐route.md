@@ -25,6 +25,9 @@ Rider
 
 - The server holds a valid transit data bundle for the queried region.
 - The caller supplies a valid `{agencyId}_{routeId}` identifier.
+- The client supplies a valid api key
+
+** NOTE ** Should move common preconditions to another document.
 
 ## Minimal Guarantees
 
