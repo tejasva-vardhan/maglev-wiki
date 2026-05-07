@@ -1,5 +1,4 @@
 * [Architecture Design Records](/OneBusAway/maglev/wiki/Architecture-Decision-Records-(ADRs))
-
 * Api Specs
 - [[agency]]
 - [[agencies‐with‐coverage]]
@@ -7,7 +6,6 @@
 - [[schedule‐for‐route]]
 - [[trips‐for‐location]]
 - [[trips‐for‐route]]
-
 * Sample API Spec Review
 - [[schedule‐for‐route]]
 - [[schedule‐for‐route:-Spec-vs-Implementation-Review]]
