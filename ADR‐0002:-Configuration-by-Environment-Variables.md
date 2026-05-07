@@ -96,6 +96,7 @@ The configuration surface — field names, types, and the env-var-to-field mappi
 - The checked-in `config.json` serves as self-documenting defaults and keeps local development simple — clone the repo and run.
 - The configuration surface is locked down before 1.0, reducing the risk of breaking changes shortly after release.
 - Aligns Maglev with 12-factor expectations that most operators already hold.
+
 **Negative**
  
 - Array-indexed env vars for `gtfs-rt-feeds` are verbose. Operators configuring a second feed entirely via env vars must set many variables; the file remains the more ergonomic path for complex feed configuration.
