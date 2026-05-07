@@ -1,4 +1,3 @@
-* [Architecture Design Records](/OneBusAway/maglev/wiki/Architecture-Decision-Records-(ADRs))
 * Api Specs
 - [[agency]]
 - [[agencies‐with‐coverage]]
