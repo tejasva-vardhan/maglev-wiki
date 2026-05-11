@@ -1,16 +1,12 @@
-** DO NOT IMPLEMENT - DRAFT **
-
-# agency/{id}
-
-**Retrieve a single transit agency record by its identifier.**
+# `GET /api/where/agency/{id}`
 
 ## Goal in Context
 
-A rider's client application needs the name, website, timezone, and contact details for a specific transit agency — for example, to display an attribution footer, link to the agency's fare page, or interpret schedule times in the correct timezone.
+A rider's client app retrieves the full record for one transit agency by its ID — name, contact details, website, timezone, and operating policies — so it can display that information to the rider or use it to configure subsequent API calls.
 
 ## Scope
 
-OBA REST API — single resource retrieval.
+OneBusAway REST API.
 
 ## Level
 
@@ -18,55 +14,47 @@ User goal.
 
 ## Primary Actor
 
-Rider (via a client application).
+Rider.
 
 ## Stakeholders and Interests
 
-- **Rider** — wants accurate, complete agency information: the agency's public name, website URL, timezone (needed to interpret schedule times), contact phone number, fare URL, and any legal disclaimer the agency requires to be displayed when its data is used.
+- **Rider** — wants complete, accurate agency details: name, website URL, phone number, fare page URL, email address, timezone, and any disclaimer the agency requires to be displayed when its data is used in an application.
 
 ## Preconditions
 
-- The agency ID is known to the caller (e.g. obtained from the `agencies-with-coverage` endpoint).
-- The server has a loaded transit data bundle that contains the requested agency.
+- The server has loaded a valid GTFS feed containing at least one agency record.
+- The caller supplies a valid API key.
 
 ## Minimal Guarantees
 
-- All responses include the envelope fields `version`, `code`, `currentTime`, and `text`.
-- The `code` field in the envelope matches the HTTP status code, giving callers a machine-readable status regardless of transport-level error handling.
+- The response is well-formed JSON with `code`, `text`, `version`, and `currentTime` fields.
+- On failure the `data` field is absent from the response body.
 
 ## Success Guarantees
 
-- The response contains the agency record in `data.entry`, populated with all fields present in the source GTFS feed.
-- HTTP status is 200 and `code` is 200.
+- The response body contains a `data.entry` object with all agency fields populated from the GTFS feed.
+- A `data.references` block is present but contains only empty arrays, as no other entity types are cross-referenced by this endpoint.
 
 ## Trigger
 
-Client sends `GET /api/where/agency/{id}.json`.
+The client sends `GET /api/where/agency/{id}.json?key={key}`.
 
 ## Main Success Scenario
 
-1. Client sends `GET /api/where/agency/{id}.json?key={key}`, where `{id}` is the agency identifier encoded directly in the URL path.
-2. The system looks up the agency in the loaded transit data bundle using the supplied identifier.
-3. The system returns HTTP 200. The response envelope contains the agency record in `data.entry` and an empty `data.references` block.
+1. The client sends `GET /api/where/agency/{id}.json?key={key}`, supplying the plain agency ID in the URL path.
+2. The system looks up the agency record for the given ID ([`AgencyAction.show()` line 59](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/AgencyAction.java#L59)).
+3. The system returns HTTP 200. `data.entry` contains the full agency record (see Response Structure). `data.references` is present but all its arrays are empty.
 
 ## Extensions
 
-**2a. Agency not found:**
-- 2a1. No agency with the given identifier exists in the loaded bundle. The system returns HTTP 404 with `code` 404 and `text` "resource not found". The `data` field is absent from the response body.
-
-**1a. Unsupported version number:**
-- 1a1. The caller supplies a `version` query parameter with a value other than 2. The system returns HTTP 500 with `code` 500 and `text` of the form "unknown version: N". The `data` field is absent from the response body.
-
----
+- **2a. No agency exists with the given ID** — ([`AgencyAction.show()` line 61](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/AgencyAction.java#L61))
+  - 2a1. The system returns HTTP 404. `code` is `404`, `text` is `"resource not found"`. The `data` field is absent.
 
 ## Suspected Defects
 
 ### Implementation defects only
 
-**Double assignment of `email` in `AgencyBeanServiceImpl`** (`AgencyBeanServiceImpl.java`, line 57).
-`bean.setEmail(agency.getEmail())` is called twice: once at line 51 and again at line 57. The second call overwrites the first with the same value. There is no observable effect at the API boundary. A clean reimplementation needs only a single assignment.
-
----
+- **`AgencyBeanServiceImpl`** — [`lines 51 and 57`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/AgencyBeanServiceImpl.java#L51-L57): `bean.setEmail(agency.getEmail())` is called twice in sequence within `getAgencyForId`. The second call immediately overwrites the first with the same value. This is harmless but redundant and would not arise in a clean reimplementation.
 
 ## Request Parameters
 
@@ -77,42 +65,30 @@ Client sends `GET /api/where/agency/{id}.json`.
   "properties": {
     "id": {
       "type": "string",
-      "description": "Agency identifier, encoded directly in the URL path segment."
+      "description": "Path parameter — the agency identifier"
     },
     "key": {
-      "type": "string",
-      "description": "API access key."
+      "type": "string"
     },
     "version": {
       "type": "integer",
-      "default": 2,
-      "description": "Response format version. Only version 2 is currently supported."
+      "default": 2
     },
     "includeReferences": {
       "type": "boolean",
-      "default": true,
-      "description": "Accepted for compatibility with other endpoints; has no observable effect here because the agency entry is the primary resource and is never placed in the references block."
-    },
-    "time": {
-      "type": "integer",
-      "description": "Unix ms. Accepted for compatibility with other endpoints; has no observable effect here because this endpoint performs no time-sensitive computation.",
-      "default": null
+      "default": true
     }
   }
 }
 ```
 
-**`id`** — The agency identifier, taken directly from the URL path. Agency IDs correspond to the `agency_id` values in the GTFS feed loaded by the server. IDs are case-sensitive and must match exactly.
+**`id`** — The agency's plain identifier, taken directly from the `agency_id` field in the GTFS `agency.txt` file. Unlike route, stop, and trip IDs, agency IDs are not wrapped in the combined `{agencyId}_{entityId}` format — the plain ID is supplied directly in the URL path (e.g., `/api/where/agency/1.json`).
 
-**`key`** — API access key issued by the server operator. Required by convention for all API calls.
+**`key`** — API authentication key. Required on all requests.
 
-**`version`** — Selects the response format version. Only version 2 is currently supported; any other value produces an HTTP 500 error.
+**`version`** — Selects the response format version. Defaults to 2. Only version 2 is in scope for the Go rewrite.
 
-**`includeReferences`** — When `false`, suppresses population of the shared references block on endpoints that embed cross-references. This endpoint does not embed any cross-references, so the parameter has no effect and the references block is always returned empty.
-
-**`time`** — Overrides the server's current time for endpoints that perform time-sensitive queries. This endpoint does not use the current time, so the parameter has no effect.
-
----
+**`includeReferences`** — When `true` (the default), the response includes a `data.references` block. Since the agency endpoint does not cross-reference any other entity types, this block is always empty regardless of this parameter's value.
 
 ## Response Structure
 
@@ -122,26 +98,24 @@ Client sends `GET /api/where/agency/{id}.json`.
 {
   "type": "object",
   "properties": {
-    "version": { "type": "integer" },
-    "code":    { "type": "integer" },
+    "code":        { "type": "integer" },
     "currentTime": { "type": "integer", "description": "Unix ms" },
-    "text":    { "type": "string" },
-    "data":    { "type": "object" }
+    "text":        { "type": "string" },
+    "version":     { "type": "integer" },
+    "data":        { "type": "object" }
   }
 }
 ```
 
-**`version`** — The response format version in use (reflects the requested `version` parameter, or 2 by default).
+**`code`** — HTTP-equivalent status code mirrored in the body: `200` on success, `404` when no agency is found.
 
-**`code`** — HTTP-equivalent status code embedded in the response body (200, 404, or 500 for the scenarios described above).
+**`currentTime`** — The server's current time at the moment of the response, in Unix milliseconds.
 
-**`currentTime`** — Server wall-clock time at the moment the response was generated, in Unix milliseconds.
+**`text`** — Human-readable status description: `"OK"` on success, `"resource not found"` when the agency does not exist.
 
-**`text`** — Human-readable status message: `"OK"` on success, `"resource not found"` on 404, or `"unknown version: N"` on an unsupported version.
+**`version`** — The response format version. Always `2` when the default is in effect.
 
-**`data`** — Present only on success (HTTP 200). Absent on error responses.
-
----
+**`data`** — Present only on a 200 response; absent on 404.
 
 ### data
 
@@ -155,18 +129,15 @@ Client sends `GET /api/where/agency/{id}.json`.
 }
 ```
 
-**`data.entry`** — The agency record. See `data.entry` schema below.
+**`data.entry`** — The agency record (see below).
 
-**`data.references`** — Always present and always empty for this endpoint. Contains the sub-keys `agencies`, `routes`, `stops`, `trips`, `situations`, and `stopTimes`, each an empty array.
-
----
+**`data.references`** — Always present on success. Contains empty arrays for `agencies`, `routes`, `stops`, `trips`, `situations`, and `stopTimes`. The agency endpoint adds no cross-references, so this block is structurally always empty regardless of the `includeReferences` parameter.
 
 ### data.entry
 
 ```json
 {
   "type": "object",
-  "required": ["id", "name", "url", "timezone", "privateService"],
   "properties": {
     "id":             { "type": "string" },
     "name":           { "type": "string" },
@@ -174,30 +145,30 @@ Client sends `GET /api/where/agency/{id}.json`.
     "timezone":       { "type": "string" },
     "lang":           { "type": "string" },
     "phone":          { "type": "string" },
+    "disclaimer":     { "type": "string" },
     "email":          { "type": "string" },
     "fareUrl":        { "type": "string" },
-    "disclaimer":     { "type": "string" },
     "privateService": { "type": "boolean" }
   }
 }
 ```
 
-**`data.entry.id`** — The agency identifier. Matches the `agency_id` value from the GTFS feed.
+**`data.entry.id`** — The plain agency identifier (e.g., `"1"`). Not in the combined `{agencyId}_{entityId}` format.
 
-**`data.entry.name`** — The full public name of the agency (GTFS `agency_name`). Always present.
+**`data.entry.name`** — The agency's full public name (e.g., `"Metro Transit"`).
 
-**`data.entry.url`** — The agency's public website URL (GTFS `agency_url`). Always present.
+**`data.entry.url`** — The agency's public website URL (e.g., `"https://kingcounty.gov/en/dept/metro"`).
 
-**`data.entry.timezone`** — IANA timezone name for the agency's operating area (GTFS `agency_timezone`), e.g. `"America/Los_Angeles"`. All scheduled times in the feed are interpreted relative to this timezone. Always present.
+**`data.entry.timezone`** — The IANA timezone identifier for the agency's operating area (e.g., `"America/Los_Angeles"`). All schedule times for this agency are expressed relative to this timezone.
 
-**`data.entry.lang`** — ISO 639-1 two-letter language code for the primary language of the agency's rider-facing text (GTFS `agency_lang`). Optional in GTFS; may be `null` or an empty string when not supplied.
+**`data.entry.lang`** — The ISO 639-1 language code for the primary language used by the agency (e.g., `"en"`). May be an empty string if not provided in the GTFS feed.
 
-**`data.entry.phone`** — Customer-service phone number for the agency (GTFS `agency_phone`). Optional in GTFS; may be `null` or an empty string when not supplied.
+**`data.entry.phone`** — The agency's public customer service phone number (e.g., `"206-553-3000"`). May be an empty string if not provided in the GTFS feed.
 
-**`data.entry.email`** — Customer-service email address (GTFS `agency_email`). Optional in GTFS; may be `null` or an empty string when not supplied.
+**`data.entry.disclaimer`** — Any legal disclaimer the agency requires to be shown when its data is used in an application. May be an empty string.
 
-**`data.entry.fareUrl`** — URL to the agency's fare information page (GTFS `agency_fare_url`). Optional in GTFS; may be `null` or an empty string when not supplied.
+**`data.entry.email`** — The agency's public contact email address. May be an empty string if not provided in the GTFS feed.
 
-**`data.entry.disclaimer`** — A legal or attribution disclaimer the agency requires to be displayed when its data is used in an application. Not a GTFS standard field; sourced from OBA's supplemental agency narrative data. May be `null` or an empty string when not configured.
+**`data.entry.fareUrl`** — URL to the agency's fare information page (e.g., `"https://kingcounty.gov/en/dept/metro/fares-and-payment/prices"`). May be an empty string if not provided in the GTFS feed.
 
-**`data.entry.privateService`** — `true` if the agency provides private service not available to the general public. Not a GTFS standard field; sourced from OBA's supplemental agency narrative data. Always present; defaults to `false`.
+**`data.entry.privateService`** — `true` if the agency provides service not available to the general public (e.g., a private shuttle service). `false` for publicly accessible transit agencies.
