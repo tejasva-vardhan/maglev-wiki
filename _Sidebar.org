@@ -1,10 +1,42 @@
-* Api Specs
-- [[agency]]
-- [[agencies‐with‐coverage]]
-- [[arrivals‐and‐departures‐for‐stop]]
-- [[schedule‐for‐route]]
-- [[trips‐for‐location]]
-- [[trips‐for‐route]]
-* Sample API Spec Review
-- [[schedule‐for‐route]]
-- [[schedule‐for‐route:-Spec-vs-Implementation-Review]]
+* ADRs
+- [[Architecture-Decision-Records-(ADRs)][Architecture Decision Records]]
+- [[ADR‐0001:-Adopt-Architecture-Decision-Records][ADR-0001: Adopt Architecture Decision Records]]
+- [[ADR‐0002:-Configuration-by-Environment-Variables][ADR-0002: Configuration by Environment Variables]]
+
+* OBA API Specs
+- [[OBA-API-Specs][API Spec Index]]
+** Agencies
+- [[agencies-with-coverage][Agencies with Coverage]]
+- [[agency][Agency]]
+** Routes
+- [[route][Route]]
+- [[routes-for-agency][Routes for Agency]]
+- [[route-ids-for-agency][Route IDs for Agency]]
+- [[routes-for-location][Routes for Location]]
+** Stops
+- [[stop][Stop]]
+- [[stops-for-agency][Stops for Agency]]
+- [[stop-ids-for-agency][Stop IDs for Agency]]
+- [[stops-for-location][Stops for Location]]
+- [[stops-for-route][Stops for Route]]
+** Trips
+- [[trip][Trip]]
+- [[trip-details][Trip Details]]
+- [[trips-for-route][Trips for Route]]
+- [[trips-for-location][Trips for Location]]
+** Schedules & Arrivals
+- [[schedule-for-stop][Schedule for Stop]]
+- [[schedule-for-route][Schedule for Route]]
+- [[arrivals-and-departures-for-stop][Arrivals and Departures for Stop]]
+- [[arrival-and-departure-for-stop][Arrival and Departure for Stop]]
+- [[trip-for-vehicle][Trip for Vehicle]]
+** Vehicles
+- [[vehicles-for-agency][Vehicles for Agency]]
+** Search
+- [[search-route][Search Route]]
+- [[search-stop][Search Stop]]
+** Utilities
+- [[config][Config]]
+- [[current-time][Current Time]]
+- [[block][Block]]
+- [[shape][Shape]]
