@@ -1,7 +1,7 @@
 * ADRs
-- [[Architecture-Decision-Records-(ADRs)][Architecture Decision Records]]
-- [[ADR‐0001:-Adopt-Architecture-Decision-Records][ADR-0001: Adopt Architecture Decision Records]]
-- [[ADR‐0002:-Configuration-by-Environment-Variables][ADR-0002: Configuration by Environment Variables]]
+- [[Architecture-Decision-Records-(ADRs)][Architecture Decision Records Index]]
+- [[/OneBusAway/maglev/wiki/ADR%E2%80%900001:-Adopt-Architecture-Decision-Records][ADR-0001: Adopt Architecture Decision Records]]
+- [[/OneBusAway/maglev/wiki/ADR%E2%80%900002:-Configuration-by-Environment-Variables][ADR-0002: Configuration by Environment Variables]]
 
 * OBA API Specs
 - [[OBA-API-Specs][API Spec Index]]
