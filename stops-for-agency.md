@@ -79,13 +79,21 @@ The stop's `parent` field contains the combined ID of the enclosing station stop
 
 `StopsForAgencyAction` and `StopIdsForAgencyAction` — [`StopsForAgencyAction.java:59`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/StopsForAgencyAction.java#L59), [`StopIdsForAgencyAction.java:59`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/StopIdsForAgencyAction.java#L59).
 
-When the supplied agency ID is not recognised, the service layer throws an exception indicating the agency does not exist. The global exception interceptor handles the analogous "no such stop", "no such trip", and "no such route" exceptions by returning HTTP 404 ([`ExceptionInterceptor.java:69–74`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L69-L74)), but does not handle the agency-not-found case. The framework therefore serialises the unset action model as JSON, producing an HTTP 200 response with a body of `null`. Verified at runtime: `GET /api/where/stops-for-agency/UNKNOWN.json` returns HTTP 200, body `null`. The intended behaviour is an HTTP 404 response with a standard error envelope, consistent with the other entity-not-found cases.
+When the supplied agency ID is not recognised, the service layer throws an exception indicating the agency does not exist. The global exception interceptor handles the analogous "no such stop", "no such trip", and "no such route" exceptions by returning HTTP 404 ([`ExceptionInterceptor.java:69–74`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L69-L74)), but does not handle the agency-not-found case. The framework therefore serialises the unset action model as JSON, producing an HTTP 200 response with a body of `null`. Verified at runtime: `GET /api/where/stops-for-agency/UNKNOWN.json` returns HTTP 200, body `null`. The intended behaviour is an HTTP 404 response with a standard error envelope, consistent with the other entity-not-found cases. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **`stop-ids-for-agency` returns IDs in undefined order.**
 
 `StopsBeanServiceImpl.getStopsIdsForAgencyId` — [`StopsBeanServiceImpl.java:258–269`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L258-L269).
 
 The `stops-for-agency` endpoint sorts its results alphabetically by combined stop ID before returning ([`StopsBeanServiceImpl.java:274`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L274)). `stop-ids-for-agency` iterates the same underlying stop entries without any sorting, so the response order reflects the transit graph's internal iteration sequence and may vary across server restarts. Verified at runtime: the IDs returned are not in alphabetical order. Clients cannot rely on a stable or alphabetical ordering. The likely intended behaviour is the same alphabetical sort by combined ID that `stops-for-agency` applies.
+
+## Implementation Decisions
+
+Decisions made for the Maglev implementation that intentionally deviate from the legacy OBA behaviour.
+
+**Unknown agency ID returns HTTP 404 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body when the supplied agency ID is not recognised (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown agency ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
 
 ## Open Questions
 
