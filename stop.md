@@ -74,7 +74,7 @@ Client sends `GET /api/where/stop/{id}.json?key={key}`.
 
 **Observable impact:** Callers cannot detect stop-not-found or malformed-ID conditions by HTTP status code. The body `null` must be used as the error signal.
 
-**Likely intended behaviour:** HTTP 404 with a JSON envelope containing `"code": 404` and a descriptive `text` field for stop-not-found; HTTP 400 or 500 with `"code": 400`/`500` for malformed IDs and unexpected errors.
+**Likely intended behaviour:** HTTP 404 with a JSON envelope containing `"code": 404` and a descriptive `text` field for stop-not-found; HTTP 400 or 500 with `"code": 400`/`500` for malformed IDs and unexpected errors. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **2. Error response version is hardcoded to 1.**
 
@@ -85,6 +85,12 @@ When an exception is caught, `ExceptionInterceptor.getExceptionAsResponseBean` (
 **3. Dead null-check in `StopAction.show()`.**
 
 `StopAction.show()` ([line 61](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/StopAction.java#L61-L62)) checks `if (stop == null)` and calls `setResourceNotFoundResponse()`. This branch is unreachable: the service method (`StopBeanServiceImpl.getStopForIdForServiceDate`) either throws `NoSuchStopServiceException` or returns a non-null `StopBean`. The null-return path does not exist.
+
+## Implementation Decisions
+
+**Unknown stop ID returns HTTP 404 and malformed ID returns HTTP 400 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body for both stop-not-found and malformed ID conditions (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown stop ID returns HTTP 404 with a standard error envelope, and a malformed ID (no underscore) returns HTTP 400, consistent with the treatment of other unknown and invalid entity IDs across the API.
 
 ## Request Parameters
 
