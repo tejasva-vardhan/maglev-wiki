@@ -67,11 +67,17 @@ The route collection list for the agency is empty; the server returns HTTP 200 w
 
 `RoutesBeanServiceImpl` ([`RoutesBeanServiceImpl.java#L122–L124`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RoutesBeanServiceImpl.java#L122)) throws `NoSuchAgencyServiceException` when the agency is not found. The `ExceptionInterceptor` ([`ExceptionInterceptor.java#L69–L84`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L69)) handles `NoSuchStopServiceException`, `NoSuchTripServiceException`, and `NoSuchRouteServiceException` explicitly (returning 404), and all other exceptions with a 500, but the `NoSuchAgencyServiceException` does not surface correctly through the Hessian RPC layer that separates the API webapp from the federation service. Instead of producing a 404 or 500, the server responds with HTTP 200 and the literal body `null`. Any client calling this endpoint with an unknown agency receives a malformed successful response with no parseable data.
 
-The intended behaviour is a 404 response with `code: 404` and an appropriate error message, consistent with how `NoSuchStopServiceException`, `NoSuchTripServiceException`, and `NoSuchRouteServiceException` are handled.
+The intended behaviour is a 404 response with `code: 404` and an appropriate error message, consistent with how `NoSuchStopServiceException`, `NoSuchTripServiceException`, and `NoSuchRouteServiceException` are handled. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 ### Implementation defects only
 
 None identified.
+
+## Implementation Decisions
+
+**Unknown agency ID returns HTTP 404 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body when the supplied agency ID is not recognised (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown agency ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
 
 ## Open Questions
 
