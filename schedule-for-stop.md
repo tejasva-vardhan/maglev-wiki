@@ -83,13 +83,19 @@ At step 8, such trips contribute entries to `scheduleFrequencies` instead of `sc
 
 When `getScheduleForStop` cannot find the stop it returns `null`, but the action class passes this directly to the response factory with no null check at [ScheduleForStopAction.java lines 68–71](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForStopAction.java#L68-L71). The factory then throws a NullPointerException ([BeanFactoryV2.java line 1070](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L1070)), which propagates unhandled through the Struts2 REST layer and results in HTTP 200 with a bare `null` body. The intended behaviour is an HTTP 404 structured response (as produced by `setResourceNotFoundResponse()`). The same applies when the stop ID lacks an underscore separator, which causes `AgencyAndIdLibrary.convertFromString` to throw `IllegalStateException`.
 
-The Go implementation must decide whether to replicate the null body (for backwards compatibility with clients that detect absence of a stop by checking for `null`) or to return a proper 404.
+*Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 ### Implementation defects only
 
 **`stopHeadsign` on fixed-schedule stop times always reads from the output bean** — `BeanFactoryV2`
 
 At [BeanFactoryV2.java line 1130](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L1130) the assignment is `stiBean.setStopHeadsign(stiBean.getStopHeadsign())` — it reads from the newly created output bean rather than from the source `sti.getStopHeadsign()`. Because the service layer also never populates `stopHeadsign` on the source `StopTimeInstanceBean`, the observable result is the same either way: the field is always null (serialised as `""` in JSON). A clean reimplementation should populate `stopHeadsign` from the source — but as the service layer never sets it, the field will remain empty until the service layer is fixed too.
+
+## Implementation Decisions
+
+**Unknown stop ID returns HTTP 404 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body when the stop ID cannot be resolved (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown or unresolvable stop ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
 
 ## Open Questions
 
