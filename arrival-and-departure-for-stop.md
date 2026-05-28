@@ -100,7 +100,7 @@ The `references` object is returned with all lists empty. The structure is prese
 **Invalid stop or trip ID returns HTTP 200 with null body instead of HTTP 404.**
 Class: `ExceptionInterceptor`, [`ExceptionInterceptor.java#L69`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L69).
 
-When the stop ID or trip ID cannot be resolved from the transit graph, a `NoSuchStopServiceException` or `NoSuchTripServiceException` is thrown. The `ExceptionInterceptor` catches these and constructs a 404 response bean, but the JSON serializer writes the action model (which was never set, so it is null) rather than the error bean. The result is HTTP 200 with a four-byte body `null`. The intended behaviour is HTTP 404 with a JSON error envelope matching the format returned for other not-found conditions. The Go implementation should return a proper HTTP 404 with an error body.
+When the stop ID or trip ID cannot be resolved from the transit graph, a `NoSuchStopServiceException` or `NoSuchTripServiceException` is thrown. The `ExceptionInterceptor` catches these and constructs a 404 response bean, but the JSON serializer writes the action model (which was never set, so it is null) rather than the error bean. The result is HTTP 200 with a four-byte body `null`. The intended behaviour is HTTP 404 with a JSON error envelope matching the format returned for other not-found conditions. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 ### Implementation defects only
 
@@ -113,6 +113,12 @@ The method checks `this.predictedArrivalTime > 0` instead of `this.predictedDepa
 Class: `BeanFactoryV2`, [`BeanFactoryV2.java#L1318`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L1318) and [`BeanFactoryV2.java#L1322`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L1322).
 
 `bean.setStatus(ad.getStatus())` is called twice with the same value. Harmless; one call is redundant.
+
+## Implementation Decisions
+
+**Unknown stop or trip ID returns HTTP 404 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body when the stop ID or trip ID cannot be resolved (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown stop or trip ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
 
 ## Open Questions
 
