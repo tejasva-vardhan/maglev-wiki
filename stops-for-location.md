@@ -108,19 +108,19 @@ The references block is present in the response but all its sub-arrays (`routes`
 
 `StopsBeanServiceImpl` ([`StopsBeanServiceImpl.java#L171–L177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L171))
 
-When `routeType` is specified, the code correctly sets `limitExceeded = true` when the post-filter count exceeds `maxCount`, but the list is passed to `constructResult` without being truncated. The comment in the code ("constructResults will perform the truncation if necessary") is incorrect: `constructResult` only sorts by stop ID. As a result, a caller requesting `maxCount=10` with `routeType=3` may receive hundreds of stops. The Go implementation must decide whether to replicate this behaviour for backwards compatibility or to apply truncation as the comment suggests is intended.
+When `routeType` is specified, the code correctly sets `limitExceeded = true` when the post-filter count exceeds `maxCount`, but the list is passed to `constructResult` without being truncated. The comment in the code ("constructResults will perform the truncation if necessary") is incorrect: `constructResult` only sorts by stop ID. As a result, a caller requesting `maxCount=10` with `routeType=3` may receive hundreds of stops.
 
 **2. The `time` parameter has no effect on route filtering when `query` is provided.**
 
 `StopsBeanServiceImpl` ([`StopsBeanServiceImpl.java#L203`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L203))
 
-In the stop-code search path, `null` is passed as the service interval when loading each stop's routes, so `routeIds` reflects all routes across all service dates regardless of the `time` parameter. In the geospatial search path (without `query`), the time context is passed and routes are filtered accordingly. The inconsistency means a caller cannot rely on `routeIds` to reflect time-active routes when supplying a stop-code query. The Go implementation should consistently apply the time context to route filtering in both paths.
+In the stop-code search path, `null` is passed as the service interval when loading each stop's routes, so `routeIds` reflects all routes across all service dates regardless of the `time` parameter. In the geospatial search path (without `query`), the time context is passed and routes are filtered accordingly. The inconsistency means a caller cannot rely on `routeIds` to reflect time-active routes when supplying a stop-code query.
 
 **3. The `routeType` filter is silently ignored when `query` is also provided.**
 
 `StopsBeanServiceImpl` ([`StopsBeanServiceImpl.java#L180–L232`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L180))
 
-When both `query` and `routeType` are provided, the route-type filter is added to the search query's filter chain by the action class but `getStopsByBoundsAndQuery` never evaluates that filter chain. All stops matching the stop-code query are returned regardless of their route types. The Go implementation should apply the route-type filter in both search paths.
+When both `query` and `routeType` are provided, the route-type filter is added to the search query's filter chain by the action class but `getStopsByBoundsAndQuery` never evaluates that filter chain. All stops matching the stop-code query are returned regardless of their route types.
 
 ### Implementation defects only
 

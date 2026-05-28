@@ -72,13 +72,13 @@ A client issues `GET /api/where/trip/{id}.json?key={apiKey}` with a valid trip I
 
 **Malformed ID (no underscore) produces HTTP 200 with null body** — `TripAction` / `TransitDataServiceTemplateImpl`
 
-When the path segment `{id}` contains no underscore character, [`AgencyAndIdLibrary.convertFromString`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-util/src/main/java/org/onebusaway/util/AgencyAndIdLibrary.java#L47) throws an `IllegalStateException`. This propagates through `TransitDataServiceTemplateImpl.getTrip` and out of `TripAction.show` without being caught, causing the Struts2 framework to serialise a null model as the response body with HTTP 200. The intended behaviour is a 400 validation error or a 404 resource-not-found response. A Go reimplementation should validate that the ID contains an underscore before attempting the lookup.
+When the path segment `{id}` contains no underscore character, [`AgencyAndIdLibrary.convertFromString`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-util/src/main/java/org/onebusaway/util/AgencyAndIdLibrary.java#L47) throws an `IllegalStateException`. This propagates through `TransitDataServiceTemplateImpl.getTrip` and out of `TripAction.show` without being caught, causing the Struts2 framework to serialise a null model as the response body with HTTP 200. The intended behaviour is a 400 validation error or a 404 resource-not-found response.
 
 ### Implementation defects only
 
 **`timeZone` field is always an empty string** — `BeanFactoryV2`
 
-[`BeanFactoryV2.getTrip`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L506) never calls `bean.setTimeZone()`, even though `TripV2Bean` declares a `timeZone` field and the internal `TripBean` model has no timezone source. The field is serialised as an empty string in every response. A Go reimplementation should omit this field entirely or populate it from an authoritative source if one is identified.
+[`BeanFactoryV2.getTrip`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L506) never calls `bean.setTimeZone()`, even though `TripV2Bean` declares a `timeZone` field and the internal `TripBean` model has no timezone source. The field is serialised as an empty string in every response.
 
 ## Request Parameters
 

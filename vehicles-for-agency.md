@@ -74,12 +74,12 @@ The client issues a GET request to `/api/where/vehicles-for-agency/{id}.json` wi
 **Occupancy count and capacity use a sentinel integer instead of absent fields.**
 [`BeanFactoryV2.java#L872–886`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L872)
 
-When no occupancy count or capacity data is available, the response includes `occupancyCount: -1` and `occupancyCapacity: -1` rather than omitting those fields. The same -1 sentinel is used when `occupancyCapacity` is reported as zero or negative. Clients cannot rely on JSON field absence to detect unavailability; they must treat -1 as "no data". The Go reimplementation should decide whether to preserve this sentinel or switch to absent/null fields.
+When no occupancy count or capacity data is available, the response includes `occupancyCount: -1` and `occupancyCapacity: -1` rather than omitting those fields. The same -1 sentinel is used when `occupancyCapacity` is reported as zero or negative. Clients cannot rely on JSON field absence to detect unavailability; they must treat -1 as "no data". The intended behaviour was probably to omit these fields when no data is available.
 
 **`ageInSeconds=0` silently disables the age filter.**
 [`VehiclesForAgencyAction.java#L89`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/VehiclesForAgencyAction.java#L89)
 
-The condition `_ageInSeconds != null && _ageInSeconds > 0` treats zero (and negative values) as equivalent to "no filter". A caller supplying `ageInSeconds=0` expecting to receive only vehicles updated at the exact reference time will instead receive all tracked vehicles regardless of age. The intended behaviour is unclear; the Go implementation should either validate that the parameter is positive or document this edge-case behaviour.
+The condition `_ageInSeconds != null && _ageInSeconds > 0` treats zero (and negative values) as equivalent to "no filter". A caller supplying `ageInSeconds=0` expecting to receive only vehicles updated at the exact reference time will instead receive all tracked vehicles regardless of age. The intended behaviour of `ageInSeconds=0` is unclear.
 
 ### Implementation defects only
 

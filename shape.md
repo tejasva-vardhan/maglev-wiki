@@ -66,7 +66,7 @@ Rider (via a client application)
 
 `AgencyIdSupport` ([`AgencyIdSupport.java` L35–36](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-federations/src/main/java/org/onebusaway/federations/annotations/AgencyIdSupport.java#L35-L36)) throws an internal exception when the supplied `id` contains no underscore, because it cannot extract an agency prefix. This exception escapes the action's error-handling logic (`ShapeAction.java` [L56–63](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ShapeAction.java#L56-L63)) and propagates through the interceptor chain in a way that causes the framework to write an HTTP 200 response with a literal `null` body rather than a structured error envelope.
 
-The intended behaviour is to return HTTP 400 (invalid argument) when the ID is syntactically malformed. The Go implementation should validate that the ID contains an underscore before attempting lookup, and return 400 if it does not.
+The intended behaviour is to return HTTP 400 (invalid argument) when the ID is syntactically malformed.
 
 ### Implementation defects only
 

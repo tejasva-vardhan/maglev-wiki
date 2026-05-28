@@ -79,7 +79,7 @@ The action returns HTTP 500 with `code: 500` and `text: "unknown version: <n>"`.
 
 **`nullSafeShortName` appears as a route field in the response.**
 
-`RouteV2Bean` ([`RouteV2Bean.java#L62-L66`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/RouteV2Bean.java#L62-L66)) exposes a `getNullSafeShortName()` getter intended for internal route sorting. Because the JSON serialiser reflects all public bean getters, this synthetic field appears in every route object as `nullSafeShortName`. Its value is the route's `shortName` when set, otherwise the full combined route ID. This field is not part of the intended API contract and should not appear in responses. The Go implementation should omit it.
+`RouteV2Bean` ([`RouteV2Bean.java#L62-L66`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/RouteV2Bean.java#L62-L66)) exposes a `getNullSafeShortName()` getter intended for internal route sorting. Because the JSON serialiser reflects all public bean getters, this synthetic field appears in every route object as `nullSafeShortName`. Its value is the route's `shortName` when set, otherwise the full combined route ID. This field is not part of the intended API contract and should not appear in responses.
 
 ### Implementation defects only
 

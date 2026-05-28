@@ -56,7 +56,7 @@ A `GET` request to `/api/where/agencies-with-coverage.json`.
 ### Defects that affect the use case
 
 **`maxCount` parameter accepted but never applied.**
-`AgenciesWithCoverageAction` declares a `maxCount` field and a public setter, but at [line 61](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/AgenciesWithCoverageAction.java#L61) the response factory is created without passing the accumulated limit value. As a result, the list is never truncated regardless of the `maxCount` value supplied by the caller, and `data.limitExceeded` is always `false`. The Go implementation does not need to replicate this — it should either remove `maxCount` from the parameter surface or implement it correctly.
+`AgenciesWithCoverageAction` declares a `maxCount` field and a public setter, but at [line 61](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/AgenciesWithCoverageAction.java#L61) the response factory is created without passing the accumulated limit value. As a result, the list is never truncated regardless of the `maxCount` value supplied by the caller, and `data.limitExceeded` is always `false`.
 
 ### Implementation defects only
 

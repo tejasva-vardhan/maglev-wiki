@@ -285,7 +285,7 @@ None. All behaviour was determined by static analysis of the full call chain and
 
 **`scheduleStopTimes[].tripId`** — Combined trip ID (`{agencyId}_{tripId}`). No full trip record appears in `data.references`; clients must use `/api/where/trip/{id}` for trip details.
 
-**`scheduleStopTimes[].stopHeadsign`** — Per-stop headsign override from the GTFS `stop_times.stop_headsign` field. Always `""` in the current Java implementation due to the defect described in Suspected Defects; the Go implementation should populate this correctly from the feed.
+**`scheduleStopTimes[].stopHeadsign`** — Per-stop headsign override from the GTFS `stop_times.stop_headsign` field. Always `""` in the current Java implementation due to the defect described in Suspected Defects.
 
 ---
 

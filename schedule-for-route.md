@@ -86,13 +86,13 @@ If the `date` value is not a valid `YYYY-MM-DD` string and not a pure decimal in
 
 [`ScheduleForRouteAction.java#L104-L108`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L104-L108), [`ScheduleForRouteAction.java#L110-L114`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L110-L114)
 
-Both `setNoServiceResponse` and `setNoServiceThatDayResponse` return `new DefaultHttpHeaders()` without calling `.withStatus(510)`. Every other error response in `ApiActionSupport` (404, 400, 500) correctly propagates the status code to the HTTP layer. The two 510 paths do not. Clients that check the HTTP status code rather than the body's `code` field cannot distinguish a 510 error from a 200 success. The Go implementation should return HTTP 510 for both conditions.
+Both `setNoServiceResponse` and `setNoServiceThatDayResponse` return `new DefaultHttpHeaders()` without calling `.withStatus(510)`. Every other error response in `ApiActionSupport` (404, 400, 500) correctly propagates the status code to the HTTP layer. The two 510 paths do not. Clients that check the HTTP status code rather than the body's `code` field cannot distinguish a 510 error from a 200 success.
 
 **`setNoServiceResponse` silently discards the route schedule data it computed.**
 
 [`ScheduleForRouteAction.java#L86-L89`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L86-L89), [`ScheduleForRouteAction.java#L104-L108`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L104-L108)
 
-The "ServiceDateOutOfRange" path calls `factory.getResponse(routeSchedule)` to compute a full response object, passes it to `setNoServiceResponse(data)`, but the method signature accepts `data` only to discard it — the response is constructed with `null`. The "NoServiceThatDay" path (Extension 3c) does the same computation and *does* include the data. The inconsistency appears unintentional: the service-date-out-of-range case should probably include a partial data body similar to the no-service-that-day case, or at minimum not waste the computation. The Go implementation should decide whether to include a body for this condition.
+The "ServiceDateOutOfRange" path calls `factory.getResponse(routeSchedule)` to compute a full response object, passes it to `setNoServiceResponse(data)`, but the method signature accepts `data` only to discard it — the response is constructed with `null`. The "NoServiceThatDay" path (Extension 3c) does the same computation and *does* include the data. The inconsistency appears unintentional: the service-date-out-of-range case should probably include a partial data body similar to the no-service-that-day case, or at minimum not waste the computation.
 
 ### Implementation defects only
 
@@ -100,19 +100,19 @@ The "ServiceDateOutOfRange" path calls `factory.getResponse(routeSchedule)` to c
 
 [`RouteScheduleBeanServiceImpl.java#L392-L395`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L392-L395)
 
-`arrivalEnabled` is set to `stopTimeEntry.getArrivalTime() > 0` and `departureEnabled` to `stopTimeEntry.getDepartureTime() > 0`. The correct check is whether the GTFS `drop_off_type` (for arrivals) and `pickup_type` (for departures) are not equal to 1 (no service). A trip whose first or last stop has a scheduled time of exactly midnight (0 seconds) would incorrectly receive `arrivalEnabled: false` or `departureEnabled: false`. In a Go reimplementation, these flags should be derived from the pickup/drop-off types.
+`arrivalEnabled` is set to `stopTimeEntry.getArrivalTime() > 0` and `departureEnabled` to `stopTimeEntry.getDepartureTime() > 0`. GTFS defines pickup and drop-off availability via `pickup_type` and `drop_off_type` respectively, which this implementation does not consult. A trip whose first or last stop has a scheduled time of exactly midnight (0 seconds) would receive `arrivalEnabled: false` or `departureEnabled: false` regardless of what the GTFS data specifies. The intended check was probably whether `drop_off_type` (for arrivals) and `pickup_type` (for departures) are not equal to 1 (no service).
 
 **`serviceId` and `stopHeadsign` fields in stop-time entries are never populated.**
 
 [`BeanFactoryV2.java#L761-L772`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L761-L772)
 
-The `getStopTime(StopTimeInstanceBeanExtendedWithStopId)` factory method transfers `arrivalTime`, `departureTime`, `arrivalEnabled`, `departureEnabled`, `tripId`, and `stopId` to the output bean, but never sets `serviceId` or `stopHeadsign`. Both fields serialise as empty strings in every response. A clean Go implementation need not include these fields.
+The `getStopTime(StopTimeInstanceBeanExtendedWithStopId)` factory method transfers `arrivalTime`, `departureTime`, `arrivalEnabled`, `departureEnabled`, `tripId`, and `stopId` to the output bean, but never sets `serviceId` or `stopHeadsign`. Both fields serialise as empty strings in every response. The intended behaviour was probably to populate them from their respective data sources.
 
 **`TripId` field name is capitalised incorrectly in `TripWithStopTimesV2Bean`.**
 
 [`TripWithStopTimesV2Bean.java#L28`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/TripWithStopTimesV2Bean.java#L28)
 
-The private field is named `TripId` (capital T). Jackson derives the JSON property name from the getter `getTripId()`, producing the correct `tripId` (lowercase) in JSON. However, XML serialisers that use field-name access would produce `TripId` (capital T), which diverges from JSON consumers' expectations. The Go implementation should use `tripId` (lowercase) consistently.
+The private field is named `TripId` (capital T). Jackson derives the JSON property name from the getter `getTripId()`, producing the correct `tripId` (lowercase) in JSON. However, XML serialisers that use field-name access would produce `TripId` (capital T), which diverges from JSON consumers' expectations. The intended serialisation was probably `tripId` (lowercase) in all output formats.
 
 ## Open Questions
 
