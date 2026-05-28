@@ -64,7 +64,13 @@ A client issues `GET /api/where/stop-ids-for-agency/{id}.json?key={apiKey}`.
 
 When the supplied agency ID does not match any agency in the transit graph, `StopsBeanServiceImpl` throws a `NoSuchAgencyServiceException` ([`StopsBeanServiceImpl.java` L261–262](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L261-L262)). The `ExceptionInterceptor` does not match `NoSuchAgencyServiceException` in its explicit type checks — it handles `NoSuchStopServiceException`, `NoSuchTripServiceException`, and `NoSuchRouteServiceException`, but not the agency equivalent ([`ExceptionInterceptor.java` L69–73](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L69-L73)). The exception propagates past the interceptor's explicit handling and the action's response object remains null, causing the framework to serialise the JSON literal `null` with HTTP 200. The intended behaviour, consistent with other resource-not-found cases, is HTTP 404 with a structured error response.
 
-The Go implementation must decide whether to replicate the null-body 200 response or return a proper 404 for unrecognised agency IDs.
+*Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
+
+## Implementation Decisions
+
+**Unknown agency ID returns HTTP 404 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body when the supplied agency ID is not recognised (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown agency ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
 
 ## Open Questions
 
