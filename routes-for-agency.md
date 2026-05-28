@@ -75,7 +75,7 @@ The action returns HTTP 500 with `code: 500` and `text: "unknown version: <n>"`.
 
 **Unknown agency returns HTTP 200 with null body instead of HTTP 404.**
 
-`ExceptionInterceptor` ([`ExceptionInterceptor.java#L68-L85`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L68-L85)) maps `NoSuchStopServiceException`, `NoSuchTripServiceException`, and `NoSuchRouteServiceException` to HTTP 404, but `NoSuchAgencyServiceException` is absent from this list. The exception falls into the `else` branch, which attempts to produce an HTTP 500 response, but due to the interaction between the Struts2 REST content-type handler and the action's null model at exception time, the observable outcome is HTTP 200 with the body `null`. The intended behaviour is HTTP 404 with a standard resource-not-found envelope (`code: 404, text: "resource not found"`).
+`ExceptionInterceptor` ([`ExceptionInterceptor.java#L68-L85`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L68-L85)) maps `NoSuchStopServiceException`, `NoSuchTripServiceException`, and `NoSuchRouteServiceException` to HTTP 404, but `NoSuchAgencyServiceException` is absent from this list. The exception falls into the `else` branch, which attempts to produce an HTTP 500 response, but due to the interaction between the Struts2 REST content-type handler and the action's null model at exception time, the observable outcome is HTTP 200 with the body `null`. The intended behaviour is HTTP 404 with a standard resource-not-found envelope (`code: 404, text: "resource not found"`). *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **`nullSafeShortName` appears as a route field in the response.**
 
@@ -86,6 +86,12 @@ The action returns HTTP 500 with `code: 500` and `text: "unknown version: <n>"`.
 **Exception response version is hard-coded to 1.**
 
 `ExceptionInterceptor` ([`ExceptionInterceptor.java#L45`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/ExceptionInterceptor.java#L45)) always constructs exception `ResponseBean` objects with `version = 1`, regardless of the version the action would have returned. This does not affect callers today (because of the null-body defect above), but any clean reimplementation of error handling should use the negotiated version consistently.
+
+## Implementation Decisions
+
+**Unknown agency ID returns HTTP 404 (deviates from legacy).**
+
+The legacy implementation returns HTTP 200 with a null body when the supplied agency ID is not recognised (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown agency ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
 
 ## Open Questions
 
