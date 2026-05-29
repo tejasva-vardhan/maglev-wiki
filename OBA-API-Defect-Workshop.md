@@ -477,7 +477,3 @@ The [[block]] endpoint returns a block — a vehicle's full day of work, consist
 ## Next Steps
 
 After the workshop, decisions recorded here will be fed back into the individual spec files. For each defect class where the decision is **Fix** or **Conditional fix**, the affected spec files should receive an **Implementation Decisions** section (or have their existing one updated) stating the Maglev behaviour and how it deviates from the legacy.
-
-The following spec files already have Implementation Decisions entries and do not need updating unless a workshop decision overrides a prior decision:
-
-- [[stop]], [[stops-for-agency]], [[stop-ids-for-agency]], [[routes-for-agency]], [[route-ids-for-agency]], [[schedule-for-stop]], [[arrival-and-departure-for-stop]]
