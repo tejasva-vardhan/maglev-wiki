@@ -27,6 +27,8 @@ When no prior decision exists, apply this rubric:
 
 **Conditional fix** when a compatibility flag or graceful migration path can serve both client populations.
 
+**Dual-implementation note:** The legacy implementation will remain in service alongside Maglev after release. Clients targeting both must handle both behaviours simultaneously. A fix in Maglev therefore adds complexity for client authors who cannot simply adopt the corrected behaviour — they must continue supporting the legacy behaviour as well. Where noted in individual client impact sections, this can make a fix that appears minor in isolation more burdensome in practice.
+
 ---
 
 ## DC-1: Unknown entity or malformed ID returns HTTP 200 with null body
@@ -40,6 +42,8 @@ The most pervasive defect class in the OBA API. When an endpoint cannot fulfil a
 **Intended behaviour:** HTTP 404 with a structured OBA error envelope (`code: 404`, `text`, no `data`) for unknown entities; HTTP 400 with `code: 400` for malformed IDs.
 
 **Client impact if fixed:** Clients that detect "not found" by checking for a null body will no longer get that signal — the body will be a 404 error envelope. Their null check won't fire, and if they then try to process the response as a success payload they will fail. Additionally, if their HTTP library throws on non-200 status codes by default, that exception may now surface as a user-visible error where previously the null body was handled silently.
+
+Clients targeting both implementations face a particular burden here: they cannot simply switch to status-code checking, since legacy returns HTTP 200 with null body while Maglev returns 4xx. They must handle both signals — checking for null body (legacy) and for a 4xx status code (Maglev) — for the same logical error condition.
 
 **Prior Maglev decisions (already resolved — for reference only):**
 
@@ -89,6 +93,8 @@ The following case is different in nature — it is not an ID parsing issue but 
 
 **Client impact if fixed:** Clients that inspect `code: 510` or `text` in the body to detect these conditions would need updating if the code changes. Clients that treat HTTP 200 as success and branch on `code` in the body would be affected by any transport-layer status change. Clients written against a corrected status code would need no changes once migrated.
 
+Clients targeting both implementations must detect "no service" conditions via two different signals simultaneously: `code: 510` in the body (legacy) and whatever status code Maglev adopts.
+
 **Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
@@ -131,6 +137,8 @@ Two endpoints produce incorrect error responses when a required parameter is abs
 
 **Client impact if fixed:** Clients whose error handling branches on HTTP status code would be affected — code currently reaching the 404 handler would now reach the 400 handler instead. Additionally, clients parsing the Struts2 `fieldErrors` body would break entirely as the body format changes to the standard OBA envelope.
 
+Clients targeting both implementations must parse two completely different body formats for the same error — Struts2 `fieldErrors` (legacy) and the standard OBA envelope (Maglev) — making any error handling for this case significantly more complex.
+
 ### DC-4b: Missing `serviceDate` in block-instance returns HTTP 404
 
 **Root cause:** `BlockInstanceAction` validates `id` but not `serviceDate`. When `serviceDate` is absent it defaults to `0` (Unix epoch); the query for a block active on 1970-01-01 finds nothing and returns HTTP 404, indistinguishable from "block not found on that date."
@@ -165,6 +173,8 @@ Several OBA endpoints accept a `maxCount` parameter intended to cap the number o
 **Intended behaviour:** Results capped at `maxCount`; `limitExceeded: true` when the cap is hit.
 
 **Client impact if fixed:** Clients that pass `maxCount` expecting a truncated result and currently receive the full set would start getting fewer results. For agencies-with-coverage most deployments have few agencies so `maxCount` rarely matters in practice; for the trips endpoints, response sizes can be large.
+
+Clients targeting both implementations that use `maxCount` for pagination or display capping may receive the full dataset from legacy and a truncated set from Maglev for the same query. Result sizes cannot be assumed consistent between servers.
 
 **Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
@@ -253,6 +263,8 @@ Two endpoints return real-time vehicle occupancy data in their responses. When n
 
 **Client impact if fixed:** Clients that use `-1` as their "no data" signal for these fields must switch to checking for field absence.
 
+Clients targeting both implementations must handle both conventions simultaneously: `-1` (legacy) and field absence (Maglev). A defensive check along the lines of `occupancyCount != null && occupancyCount != -1` covers both, but is more complex than either convention alone.
+
 **Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
@@ -298,6 +310,8 @@ The OBA response envelope includes a `version` field that echoes the API version
 **Intended behaviour:** All supplied parameters should be respected.
 
 **Client impact if fixed:** Clients combining `query`+`routeType` currently receive unfiltered results; fixing this would reduce the result set. Clients combining `query`+`time` currently see routes from all service dates on each stop; fixing this could remove routes from displayed stop records.
+
+Clients targeting both implementations may see different route sets on the same stop depending on which server responded — legacy returns all-dates routes regardless of `time`, Maglev returns time-filtered routes. Display of "which routes serve this stop" could differ between servers for the same query.
 
 **Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
