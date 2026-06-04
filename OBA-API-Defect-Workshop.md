@@ -69,9 +69,11 @@ The following case is different in nature — it is not an ID parsing issue but 
 
 - [[search-stop]] — passing `includeReferences=false` triggers a NullPointerException before the response bean is set, returning HTTP 200 null. Any client passing this parameter is already receiving a broken null response and cannot be relying on it working correctly. Fixing it makes the parameter work for the first time rather than changing existing working behaviour.
 
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+**Decision:** [ ] Preserve  [x] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
+
+A client would have to be sending requests with unknown entity ids to trigger this.
 
 ---
 
@@ -95,7 +97,7 @@ The following case is different in nature — it is not an ID parsing issue but 
 
 Clients targeting both implementations must detect "no service" conditions via two different signals simultaneously: `code: 510` in the body (legacy) and whatever status code Maglev adopts.
 
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+**Decision:** [ ] Preserve  [x] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
 
