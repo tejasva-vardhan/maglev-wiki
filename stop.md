@@ -223,7 +223,7 @@ The legacy implementation returns HTTP 200 with a null body for both stop-not-fo
 
 **`data.references.routes[]`** — Full route records for each route in `routeIds`. Empty when `includeReferences=false`.
 
-**`data.references.stops[]`** — Contains the full record of the parent station stop, if `data.entry.parent` is non-empty. Empty when the stop has no parent, or when `includeReferences=false`. The parent record follows the same structure as `data.entry`, with all fields populated from the database.
+**`data.references.stops[]`** — Contains the full record of the parent station stop, if `data.entry.parent` is non-empty. Empty when the stop has no parent, or when `includeReferences=false`. The parent record follows the same structure as `data.entry`, with all fields populated from the database. Note: the GTFS spec permits a three-level hierarchy (Station → Platform → Boarding Area), but this spec assumes a maximum of two levels; boarding area stops are out of scope.
 
 **`data.references.trips[]`** — Always empty for this endpoint.
 
