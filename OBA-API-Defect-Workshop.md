@@ -227,10 +227,10 @@ Route objects returned by several endpoints include an unexpected field, `nullSa
 
 **Client impact if fixed:** Clients that use `nullSafeShortName` to avoid null-checking `shortName` would break — they would need to implement `shortName ?? id` themselves.
 
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+**Decision:** [x] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
-
+Wayfinder uses nullSafeShortName in its search results. When a rider searches for a route, the result titles would show internal database identifiers, opaque numbers like `"100479"`, instead of the human-readable route names they recognise from bus stops and schedules, such as `"E Line"`. In the case of King County Metro for example, every search result would be affected, since all KCM routes have short names.
 ---
 
 ## DC-8: Service alert application-key filter always no-ops
