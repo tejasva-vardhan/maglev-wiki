@@ -99,7 +99,7 @@ Clients targeting both implementations must detect "no service" conditions via t
 
 **Decision:** [ ] Preserve  [x] Fix  [ ] Conditional fix
 
-**Notes:** _(to be filled during workshop)_
+**Notes:** Both cases return HTTP 200 with `code: 200` in the body. The `text` field carries `"ServiceDateOutOfRange"` or `"NoServiceThatDay"` so clients that care about the reason can still distinguish them. These are not error conditions — the route exists, the request succeeded, the schedule for that date is simply empty. HTTP 404 was considered and rejected: a 404 means the resource doesn't exist, but the route is real in both cases — the caller just picked a date with no service. Returning 200 avoids conflating "no service today" with "route not found," which require different user-facing messages. Static analysis of all three clients (Wayfinder, iOS, Android) confirms none inspect `code: 510` or the `text` field for this endpoint; the change is invisible to existing clients.
 
 ---
 
@@ -119,9 +119,9 @@ As covered in DC-2, both `ServiceDateOutOfRange` and `NoServiceThatDay` are erro
 
 **Client impact if fixed:** Clients that read the partial data body from `NoServiceThatDay` responses — for example, to display route information even when no service runs — would stop receiving that data. The asymmetry between the two conditions also means clients may currently distinguish them by checking whether `data` is null; fixing this would remove that signal.
 
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+**Decision:** [ ] Preserve  [x] Fix  [ ] Conditional fix
 
-**Notes:** _(to be filled during workshop)_
+**Notes:** Resolved by the DC-2 decision. Since both cases now return HTTP 200 with `code: 200`, they are no longer error responses — they are successful responses with an empty schedule. Both cases include the same partial body: route ID, schedule date, empty `serviceIds` and `stopTripGroupings` arrays, and agency+route references. This makes the two responses structurally consistent (the only difference is the `text` label) and gives clients useful context (route metadata) even when no trips run. `ServiceDateOutOfRange` gains the partial body it previously lacked; `NoServiceThatDay` keeps the one it already had.
 
 ---
 

@@ -120,6 +120,14 @@ The private field is named `TripId` (capital T). Jackson derives the JSON proper
 
 The legacy Java implementation returns a bare Struts body `{"fieldErrors":{"date":[...]}}` with no OBA envelope fields. Maglev returns the standard OBA response envelope with field errors nested under `data`, matching the format used by `validationErrorResponse` across all other endpoints. This is a deliberate deviation from the legacy body format to maintain a consistent response structure across all Maglev error responses (see DC-4a).
 
+**Extensions 3b/3c — "no service" responses use `code: 200` with descriptive `text`, not `code: 510` (DC-2)**
+
+The legacy Java implementation returns `code: 510` in the response body for both `ServiceDateOutOfRange` and `NoServiceThatDay`. HTTP 510 ("Not Extended") is a protocol-level negotiation code unrelated to transit scheduling, and the legacy implementation does not propagate it to the HTTP transport layer anyway (both responses are HTTP 200). Maglev returns `code: 200` in the body (matching the HTTP status) and uses the `text` field (`"ServiceDateOutOfRange"` or `"NoServiceThatDay"`) to communicate the reason. These are not error conditions — the route exists, the request succeeded, the schedule for the requested date is simply empty. Static analysis of all three clients (Wayfinder + JS SDK, iOS, Android) confirms none inspect `code: 510` or branch on the body `code` field for this endpoint.
+
+**Extension 3b — `ServiceDateOutOfRange` includes a partial data body (DC-3)**
+
+The legacy Java implementation returns `data: null` for `ServiceDateOutOfRange` while returning a partial data body (route ID, schedule date, empty arrays, agency+route references) for `NoServiceThatDay`. Since DC-2 reclassifies both as successful responses with an empty schedule, Maglev returns the same partial data body for both cases. This makes the two responses structurally consistent — the only difference is the `text` label — and gives clients useful context (route metadata) even when no trips run. For iOS specifically, this eliminates a `DecodingError` that occurred when `data` was null, allowing the app to display an empty schedule instead of a generic error.
+
 ## Open Questions
 
 None.
