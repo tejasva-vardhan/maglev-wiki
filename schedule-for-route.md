@@ -114,6 +114,12 @@ The `getStopTime(StopTimeInstanceBeanExtendedWithStopId)` factory method transfe
 
 The private field is named `TripId` (capital T). Jackson derives the JSON property name from the getter `getTripId()`, producing the correct `tripId` (lowercase) in JSON. However, XML serialisers that use field-name access would produce `TripId` (capital T), which diverges from JSON consumers' expectations. The intended serialisation was probably `tripId` (lowercase) in all output formats.
 
+## Implementation Decisions
+
+**Extension 4a — validation-error body wraps field errors in OBA response envelope**
+
+The legacy Java implementation returns a bare Struts body `{"fieldErrors":{"date":[...]}}` with no OBA envelope fields. Maglev returns the standard OBA response envelope with field errors nested under `data`, matching the format used by `validationErrorResponse` across all other endpoints. This is a deliberate deviation from the legacy body format to maintain a consistent response structure across all Maglev error responses (see DC-4a).
+
 ## Open Questions
 
 None.
