@@ -189,7 +189,7 @@ When the path segment `{id}` contains no underscore character, [`AgencyAndIdLibr
 
 **`data.entry.directionId`** — Inbound/outbound designation for this trip within its route: `"0"` or `"1"`. May be absent when the GTFS feed does not specify a direction.
 
-**`data.entry.blockId`** — Combined `agencyId_entityId` identifier for the block this trip belongs to. A block is the complete ordered sequence of trips a single vehicle executes on one operating day; use the `block/{id}` endpoint to retrieve the full block structure.
+**`data.entry.blockId`** — Combined `agencyId_entityId` identifier for the block this trip belongs to. A block is the complete ordered sequence of trips a single vehicle executes on one operating day.
 
 **`data.entry.peakOffpeak`** — Integer flag indicating whether this trip operates during peak hours. `0` indicates the trip is not flagged as a peak service; non-zero values indicate peak designation. This field is primarily used by commuter rail operators and will be `0` for most bus agencies.
 

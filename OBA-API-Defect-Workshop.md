@@ -141,19 +141,7 @@ Two endpoints produce incorrect error responses when a required parameter is abs
 
 Clients targeting both implementations must parse two completely different body formats for the same error — Struts2 `fieldErrors` (legacy) and the standard OBA envelope (Maglev) — making any error handling for this case significantly more complex.
 
-### DC-4b: Missing `serviceDate` in block-instance returns HTTP 404
-
-**Root cause:** `BlockInstanceAction` validates `id` but not `serviceDate`. When `serviceDate` is absent it defaults to `0` (Unix epoch); the query for a block active on 1970-01-01 finds nothing and returns HTTP 404, indistinguishable from "block not found on that date."
-
-**Affected endpoint:** [[block]] (`block-instance` variant)
-
-**Observed behaviour:** HTTP 404 when `serviceDate` is omitted.
-
-**Intended behaviour:** HTTP 400, since `serviceDate` is semantically required.
-
-**Client impact if fixed:** Clients whose error handling branches on HTTP status code would be affected — code currently reaching the 404 handler would now reach the 400 handler instead.
-
-**Decision (DC-4a and DC-4b):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+**Decision (DC-4a):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
 
@@ -452,24 +440,6 @@ fields:
 **Notes:** _(to be filled during workshop)_
 
 ---
-
-## DC-18: block — agency timezone omitted from block configuration
-
-The [[block]] endpoint returns a block — a vehicle's full day of work, consisting of one or more trips in sequence. Each block configuration includes the trips and their stop times, expressed as seconds since midnight in the agency's local timezone. To convert those stop times to absolute timestamps, a client needs to know the agency's timezone. The response is supposed to include an IANA timezone string (e.g. `"America/Los_Angeles"`) in the block configuration object, but the field is silently dropped during response assembly.
-
-**Root cause:** `BeanFactoryV2.getBlockConfig` maps `BlockConfigurationBean` to `BlockConfigurationV2Bean`, which has no `timeZone` field. The IANA timezone populated by the service layer is silently dropped.
-
-**Affected endpoints:** [[block]] (`block` and `block-instance` variants)
-
-**Observed behaviour:** Block configurations include service IDs and trip lists but no `timeZone` field. Block stop times are expressed as seconds since midnight in the agency's local timezone; without the timezone, clients cannot compute absolute timestamps.
-
-**Intended behaviour:** The block configuration object should include a `timeZone` IANA string (e.g. `"America/Los_Angeles"`).
-
-**Client impact if fixed:** Clients would gain the timezone needed to compute correct absolute timestamps from block stop times. No existing client relying on the absence of a timezone field would be broken — this is a pure addition.
-
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
-
-**Notes:** _(to be filled during workshop)_
 
 ---
 

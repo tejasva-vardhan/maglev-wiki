@@ -68,6 +68,4 @@ and suspected defects.
 |----------|------|
 | `GET /api/where/config.json` | [[config]] |
 | `GET /api/where/current-time.json` | [[current-time]] |
-| `GET /api/where/block/{id}.json` | [[block]] |
-| `GET /api/where/block-instance/{id}.json` | [[block]] |
 | `GET /api/where/shape/{id}.json` | [[shape]] |
