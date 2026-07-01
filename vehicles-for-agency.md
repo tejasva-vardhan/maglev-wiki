@@ -85,6 +85,16 @@ The condition `_ageInSeconds != null && _ageInSeconds > 0` treats zero (and nega
 
 None identified.
 
+## Implementation Decisions
+
+**`ageInSeconds=0` applies a strict zero-second cutoff, not "no filter".**
+
+The legacy Java condition `_ageInSeconds != null && _ageInSeconds > 0` treated `ageInSeconds=0` as equivalent to absent — no staleness filter was applied. Maglev deliberately deviates from this: supplying `ageInSeconds=0` now applies a strict cutoff at the reference time, excluding any vehicle whose last update timestamp is before that instant. Only vehicles timestamped at or after the reference time are retained.
+
+This was chosen because treating zero the same as "absent" makes the parameter non-monotonic — a caller cannot use `ageInSeconds=0` to express "give me only vehicles with a position update right now." The legacy behaviour reflects an implementation oversight (`> 0` instead of `>= 0`) rather than a deliberate API contract. Negative values and an absent parameter continue to disable the filter, preserving backward compatibility for the common case.
+
+Closed by PR [#1108](https://github.com/OneBusAway/maglev/pull/1108).
+
 ## Open Questions
 
 None.
