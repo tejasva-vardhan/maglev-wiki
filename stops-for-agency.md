@@ -66,7 +66,7 @@ The rider's client calls `GET /api/where/stops-for-agency/{id}.json` or `GET /ap
 The references block is present in the envelope but contains no entries. For `stop-ids-for-agency`, this parameter is accepted but has no effect since the references block is always empty for that endpoint.
 
 **3a. (stops-for-agency) A stop has a parent station:**
-The stop's `parent` field contains the combined ID of the enclosing station stop. A minimal record for the parent station is added to `data.references.stops`.
+The stop's `parent` field contains the combined ID of the enclosing station stop. A minimal record for the parent station is added to `data.references.stops`. *Maglev intentionally expands this to a full record — see [Implementation Decisions](#implementation-decisions).*
 
 **3b. (stops-for-agency) A stop has an explicit static route annotation:**
 `staticRouteIds` contains the IDs from that annotation, which may differ from `routeIds`. When no annotation exists (the common case), `staticRouteIds` falls back to the same set as `routeIds` ([`StopBeanServiceImpl.java:137–148`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopBeanServiceImpl.java#L137-L148)).
@@ -94,6 +94,10 @@ Decisions made for the Maglev implementation that intentionally deviate from the
 **Unknown agency ID returns HTTP 404 (deviates from legacy).**
 
 The legacy implementation returns HTTP 200 with a null body when the supplied agency ID is not recognised (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: an unknown agency ID returns HTTP 404 with a standard error envelope, consistent with the treatment of other unknown entity IDs across the API.
+
+**Parent station records in `references.stops` are full stop records (deviates from legacy).**
+
+The legacy implementation adds a minimal record for each parent station to `data.references.stops` (see Extension 3a). Maglev expands this to a full stop record with the same structure as entries in `data.list`, including `routeIds` and `staticRouteIds` fetched from the database. This is consistent with how other endpoint specs define stop records in `references.stops`: the `stop` spec states the parent record "follows the same structure as `data.entry`, with all fields populated from the database", and the `arrivals-and-departures-for-stop` spec specifies "full stop objects" throughout.
 
 ## Open Questions
 
