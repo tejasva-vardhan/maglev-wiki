@@ -101,6 +101,14 @@ The spec's Extension 4a describes a federated multi-server scenario from the leg
 
 Closed by PR [#1114](https://github.com/OneBusAway/maglev/pull/1114).
 
+**`lastUpdateTime`, `lastLocationUpdateTime`, `tripStatus.lastUpdateTime`, and `tripStatus.lastLocationUpdateTime` emit `0` rather than being absent when no real-time update has been received.**
+
+The spec requires `lastLocationUpdateTime` (outer entry) to be absent when no GPS update has been received, and both `tripStatus.lastUpdateTime` and `tripStatus.lastLocationUpdateTime` to be absent when zero. Maglev emits `0` for all four fields in the no-update case instead.
+
+The `tripStatus` fields are carried on the shared `TripStatus` struct reused across multiple endpoints. Adding per-endpoint omission logic would require endpoint-specific wrapper types or a custom marshaler. The outer entry fields follow the same convention for consistency. `0` is an unambiguous sentinel and no known client treats absence and `0` differently for these fields.
+
+PR [#1116](https://github.com/OneBusAway/maglev/pull/1116) removed the prior behaviour where the handler fell back to the server clock (`api.Clock.Now()`) when no vehicle timestamp was present, so the fields now correctly reflect the absence of real-time data rather than fabricating a timestamp.
+
 ## Open Questions
 
 None.
@@ -233,7 +241,7 @@ Each element describes one tracked vehicle.
 
 **`data.list[].lastUpdateTime`** — Unix milliseconds. The timestamp of the most recent update from any real-time source for this vehicle. This is the value compared against `ageInSeconds`.
 
-**`data.list[].lastLocationUpdateTime`** — Unix milliseconds. The timestamp of the most recent GPS position update specifically. Absent when no GPS update has ever been received for this vehicle.
+**`data.list[].lastLocationUpdateTime`** — Unix milliseconds. The timestamp of the most recent GPS position update specifically. Absent when no GPS update has ever been received for this vehicle (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
 **`data.list[].location`** — The vehicle's last known GPS coordinates (`lat`, `lon`). May be absent if no position has been reported.
 
@@ -333,9 +341,9 @@ Each element describes one tracked vehicle.
 
 **`data.list[].tripStatus.predicted`** — `true` when real-time GPS or prediction data was used to derive this status; `false` when the position and timing are estimated from the static schedule only.
 
-**`data.list[].tripStatus.lastUpdateTime`** — Unix milliseconds of the most recent real-time update. Absent when zero.
+**`data.list[].tripStatus.lastUpdateTime`** — Unix milliseconds of the most recent real-time update. Absent when zero (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
-**`data.list[].tripStatus.lastLocationUpdateTime`** — Unix milliseconds of the most recent GPS position update. Absent when zero.
+**`data.list[].tripStatus.lastLocationUpdateTime`** — Unix milliseconds of the most recent GPS position update. Absent when zero (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
 **`data.list[].tripStatus.lastKnownDistanceAlongTrip`** — Metres along the trip at the time of the most recent known real-time position. Absent when no real-time distance has been recorded.
 

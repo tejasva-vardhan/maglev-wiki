@@ -79,7 +79,7 @@ Client sends a GET request to `/api/where/trip-details/{id}.json` with a valid A
       - `distanceAlongTrip`: how far the vehicle has actually travelled along the active trip, in metres (present when real-time data provides this)
       - `scheduleDeviation`: the vehicle's lateness in seconds (positive = late, negative = early); present when real-time data is available, zero otherwise
       - `predicted`: `true` if the position and deviation were derived from real-time GPS data; `false` if they are computed from the static schedule
-      - `lastUpdateTime` / `lastLocationUpdateTime`: Unix millisecond timestamps of the most recent real-time update and the most recent real-time location update respectively; absent if no updates have been received
+      - `lastUpdateTime` / `lastLocationUpdateTime`: Unix millisecond timestamps of the most recent real-time update and the most recent real-time location update respectively; absent if no updates have been received (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions))
       - `lastKnownLocation`: the last GPS-confirmed lat/lon (as opposed to the extrapolated `position`)
       - `lastKnownDistanceAlongTrip` / `lastKnownOrientation`: the last known real-time distance and heading values
       - `phase`: the vehicle's current operating phase (e.g., `in_progress`, `layover_during`, `deadhead_before`)
@@ -149,6 +149,16 @@ At [`TripStatusBeanServiceImpl.java:270–276`](https://github.com/OneBusAway/on
 **4. `TripStopTimesBeanServiceImpl` — historical occupancy computed and written twice per stop**
 
 At [`TripStopTimesBeanServiceImpl.java:109–113`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStopTimesBeanServiceImpl.java#L109-L113), `getStopTimesForBlockTrip` iterates over the stop times returned by `getStopTimesForTrip` and sets historical occupancy again. `getStopTimesForTrip` already computed and set the same value at lines 155–156. Both lookups use identical parameters, so the second write overwrites the first with the same result. The work is duplicated unnecessarily.
+
+---
+
+## Implementation Decisions
+
+**`lastUpdateTime` and `lastLocationUpdateTime` emit `0` rather than being absent when no real-time update has been received.**
+
+The legacy Java implementation omitted `status.lastUpdateTime` and `status.lastLocationUpdateTime` from the response when no real-time data had been received for the vehicle. Maglev emits `0` for both fields in that case.
+
+The fields are carried on the shared `TripStatus` struct, which is reused across multiple endpoints. Adding per-endpoint omission logic to a shared struct would require either endpoint-specific wrapper types or a custom marshaler — complexity that is not warranted given that `0` is an unambiguous sentinel and no known client treats absence and `0` differently for these fields.
 
 ---
 
@@ -438,9 +448,9 @@ None. All observable behaviours were resolved through static analysis and live s
 
 **`data.entry.status.predicted`** — `true` if the position and schedule deviation are derived from real-time GPS data; `false` if they are computed from the static timetable.
 
-**`data.entry.status.lastUpdateTime`** — Unix millisecond timestamp of the most recent real-time message received from the vehicle (position, status, or any other update). Absent if no updates have ever been received.
+**`data.entry.status.lastUpdateTime`** — Unix millisecond timestamp of the most recent real-time message received from the vehicle (position, status, or any other update). Absent if no updates have ever been received (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
-**`data.entry.status.lastLocationUpdateTime`** — Unix millisecond timestamp of the most recent real-time message that contained a location fix. Absent if no location updates have been received.
+**`data.entry.status.lastLocationUpdateTime`** — Unix millisecond timestamp of the most recent real-time message that contained a location fix. Absent if no location updates have been received (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
 **`data.entry.status.lastKnownLocation`** — The last GPS-confirmed position of the vehicle, without extrapolation. May lag behind `position` when the system has extrapolated forward.
 

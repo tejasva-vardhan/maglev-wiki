@@ -106,6 +106,16 @@ The list-version method (used by other endpoints, not `trip-for-vehicle`) checks
 
 The `@RequiredFieldValidator` annotation on `TripForVehicleAction.setId` is dead code ([source: `TripForVehicleAction.java#L59–L62`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripForVehicleAction.java#L59-L62)). The vehicle ID is embedded in the URL path; when it is absent, the Struts2 framework returns a container-level 404 before the action is reached, so `hasErrors()` is never checked for this parameter.
 
+## Implementation Decisions
+
+**`lastUpdateTime` and `lastLocationUpdateTime` emit `0` rather than being absent when no real-time update has been received.**
+
+The legacy Java implementation omitted `status.lastUpdateTime` and `status.lastLocationUpdateTime` from the response when no real-time data had been received for the vehicle. Maglev emits `0` for both fields in that case.
+
+The fields are carried on the shared `TripStatus` struct, which is reused across multiple endpoints. Adding per-endpoint omission logic to a shared struct would require either endpoint-specific wrapper types or a custom marshaler — complexity that is not warranted given that `0` is an unambiguous sentinel and no known client treats absence and `0` differently for these fields.
+
+---
+
 ## Request Parameters
 
 ```json
@@ -310,9 +320,9 @@ The `@RequiredFieldValidator` annotation on `TripForVehicleAction.setId` is dead
 
 **`data.entry.status.predicted`** — `true` when real-time tracking data is available and used for position, schedule deviation, and time estimates; `false` when values are derived from the static schedule.
 
-**`data.entry.status.lastUpdateTime`** — Unix milliseconds of the most recent vehicle update of any kind. Absent when no update has been received.
+**`data.entry.status.lastUpdateTime`** — Unix milliseconds of the most recent vehicle update of any kind. Absent when no update has been received (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
-**`data.entry.status.lastLocationUpdateTime`** — Unix milliseconds of the most recent vehicle update that contained a location fix. Absent when no location update has been received.
+**`data.entry.status.lastLocationUpdateTime`** — Unix milliseconds of the most recent vehicle update that contained a location fix. Absent when no location update has been received (Maglev emits `0` — see [Implementation Decisions](#implementation-decisions)).
 
 **`data.entry.status.lastKnownDistanceAlongTrip`** — Metres along the active trip as reported in the most recent real-time update, before any forward extrapolation. Absent when not supplied by the real-time source.
 
