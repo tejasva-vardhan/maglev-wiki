@@ -95,6 +95,12 @@ This was chosen because treating zero the same as "absent" makes the parameter n
 
 Closed by PR [#1108](https://github.com/OneBusAway/maglev/pull/1108).
 
+**`outOfRange: true` (Extension 4a) is not implemented; `outOfRange` is always `false`.**
+
+The spec's Extension 4a describes a federated multi-server scenario from the legacy Java stack, where a regional broker could receive a request for an agency it did not serve and return `outOfRange: true` to signal that the client should redirect to the correct regional server. Maglev has no equivalent concept: agency presence is binary — an agency is either loaded from the GTFS feed (and therefore served) or it is not in the database. There is no state in which Maglev knows about an agency but considers it "out of service area." Accordingly, `outOfRange` is hardcoded to `false` in all response paths. If Maglev ever gains multi-instance or federated routing support, this decision should be revisited.
+
+Closed by PR [#1114](https://github.com/OneBusAway/maglev/pull/1114).
+
 ## Open Questions
 
 None.
