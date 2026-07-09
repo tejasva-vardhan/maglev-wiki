@@ -125,7 +125,7 @@ None. All behaviour was determined by static analysis of the full call chain and
     "includeReferences": {
       "type": "boolean",
       "default": true,
-      "description": "When false, the references block is omitted from the response."
+      "description": "When false, the references block is still present but every list within it is empty."
     },
     "version": {
       "type": "integer",
@@ -141,7 +141,7 @@ None. All behaviour was determined by static analysis of the full call chain and
 
 **`date`** — The service date for which to retrieve the schedule. When given as `YYYY-MM-DD`, it is parsed as midnight of that date in the server's local timezone. When given as a Unix millisecond integer, the local calendar date is derived from that timestamp. When omitted, the current server time is used (meaning the schedule for today is returned). The `date` field in the response entry echoes back the raw timestamp that was used — which is midnight only when `YYYY-MM-DD` was supplied; otherwise it is the exact timestamp provided or the current wall-clock time.
 
-**`includeReferences`** — Controls whether the `data.references` block is populated. Defaults to `true`. When `false`, the entry is returned without accompanying reference objects.
+**`includeReferences`** — Controls whether the `data.references` block is populated. Defaults to `true`. The block itself is always present in the response; when `false`, each of its lists (`agencies`, `routes`, `stops`, `trips`, `situations`, `stopTimes`) is returned empty rather than populated, and the batch lookups that would otherwise fill them are skipped.
 
 **`version`** — API version selector. Defaults to `2`. Only version 2 behaviour is in scope for the Go reimplementation.
 
@@ -180,7 +180,7 @@ None. All behaviour was determined by static analysis of the full call chain and
 
 **`data.entry`** — The stop schedule payload; see below.
 
-**`data.references`** — Referenced entities. Omitted when `includeReferences=false`.
+**`data.references`** — Referenced entities. Always present as an object; when `includeReferences=false`, every list within it is empty rather than the key being omitted.
 
 ---
 
