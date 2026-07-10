@@ -63,6 +63,7 @@ The client issues a GET request to `/api/where/vehicles-for-agency/{id}.json` wi
 
 **5a. No matching trip is found for a vehicle at the reference time:**
 - The vehicle entry is included, but `tripId` and `tripStatus` are absent.
+- **This is legacy behaviour. Maglev does not implement it — the vehicle is dropped from the response entirely instead. See [Implementation Decisions](#implementation-decisions).**
 
 **5b. A vehicle is executing a trip on a different route than the one it was nominally assigned to (interlining):**
 - The outer `tripId` field refers to the nominal trip; the `tripStatus.activeTripId` field refers to the trip actually being executed at the reference time. Both trips appear in the references block. This is expected behaviour, not an error.
@@ -108,6 +109,16 @@ The spec requires `lastLocationUpdateTime` (outer entry) to be absent when no GP
 The `tripStatus` fields are carried on the shared `TripStatus` struct reused across multiple endpoints. Adding per-endpoint omission logic would require endpoint-specific wrapper types or a custom marshaler. The outer entry fields follow the same convention for consistency. `0` is an unambiguous sentinel and no known client treats absence and `0` differently for these fields.
 
 PR [#1116](https://github.com/OneBusAway/maglev/pull/1116) removed the prior behaviour where the handler fell back to the server clock (`api.Clock.Now()`) when no vehicle timestamp was present, so the fields now correctly reflect the absence of real-time data rather than fabricating a timestamp.
+
+**Extension 5a (trip-less vehicle inclusion) is not implemented; trip-less vehicles are dropped entirely rather than included with `tripId`/`tripStatus` absent.**
+
+The spec requires a vehicle with no matching trip at the reference time to still appear in `data.list`, with `tripId` and `tripStatus` absent. Maglev's `VehiclesForAgencyID` (`internal/gtfs/gtfs_manager.go`) requires `v.Trip != nil` and resolves agency membership only via the trip → route → agency chain, so a vehicle without a trip assignment is filtered out entirely — it never appears in the response at all, rather than appearing with the trip fields omitted.
+
+This is a deliberate decision not to close the gap, not an oversight. An attempted fix (PR #1129) ran into three unresolved problems: (1) agency resolution for a trip-less vehicle has no domain-level signal to use — GTFS-RT carries no `agency_id` on `VehiclePosition`, so resolution requires ingestion-time bookkeeping (which feed a vehicle came from, and what agency that feed's config declares) that a query-time method like `VehiclesForAgencyID` shouldn't otherwise need to know about; (2) Maglev's real-time feeds can be configured with more than one agency ID (`agency-ids` in `config.json`), and there is no data-driven way to attribute a trip-less vehicle to exactly one of them — legacy does not resolve this cleanly either, it unconditionally attributes every vehicle position from a multi-agency source to the first configured agency ID (`GtfsRealtimeSource.cacheVehicleLocations`), regardless of the vehicle's actual owning agency; (3) a trip-less vehicle has no route, stop, or arrival prediction to offer, so it is of limited value to this endpoint's primary consumer, a rider looking for their bus.
+
+If this is revisited, agency should be resolved once per vehicle at ingestion time (not per query) and attached to a derived, agency-indexed view — e.g. a `vehiclesByAgencyMap` built alongside the other derived indexes in `rebuildMergedRealtimeLocked()` — so `VehiclesForAgencyID` stays a plain locked-copy read with no awareness of feeds. A trip-less vehicle whose feed lists multiple agencies should be attributed to all of them rather than arbitrarily choosing one.
+
+Not implemented. See issue [#1128](https://github.com/OneBusAway/maglev/issues/1128) (closed, not planned) and PR [#1129](https://github.com/OneBusAway/maglev/pull/1129) (closed, not merged) for the full discussion.
 
 ## Open Questions
 
