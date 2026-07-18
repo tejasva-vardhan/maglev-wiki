@@ -54,7 +54,7 @@ An HTTP GET request to `/api/where/search/stop.json` (or `.xml`) with a non-empt
 
 5. The truncated list is filtered to remove stops that are served exclusively by special-vehicle route types. Specifically: a stop with exactly one route is excluded if that route's type is 711, 712, 713, or 714; a stop with two or more routes is always included regardless of their types; a stop with zero routes is excluded. ([`StopAction.java:61-65`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L61-L65))
 
-6. The server converts each remaining stop to its API representation and collects all routes and agencies referenced by those stops into the references block. Routes in the references block are sorted by short name; within each agency, the primary agency's routes appear first when a custom sort is configured. ([`BeanFactoryV2.java:147-161`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L147-L161))
+6. The server converts each remaining stop to its API representation and collects all routes and agencies referenced by those stops into the references block. Routes in the references block are sorted by short name (plain lexicographic compare, falling back directly to the combined route ID when short name is unset); within each agency, the primary agency's routes appear first when a custom sort is configured. ([`BeanFactoryV2.java:147-161`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L147-L161)) *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 7. The server returns HTTP 200 with the standard envelope containing the list, `limitExceeded`, `outOfRange` (always `false`), and the references block.
 
@@ -119,6 +119,14 @@ The call to `_service.getStopSuggestions(null, _input, maxCount)` hardcodes `nul
 **`includeReferences=false` returns the stop list without a references block, rather than reproducing the legacy NullPointerException (deviates from legacy).**
 
 The legacy implementation throws a NullPointerException when `includeReferences=false` is passed, serialising the response as the JSON literal `null` with HTTP 200 (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: passing `includeReferences=false` returns the standard envelope with `data.list` populated as usual and `data.references` present but with all arrays (`agencies`, `routes`, `situations`, `stops`) empty, consistent with how `includeReferences=false` behaves on other Maglev endpoints.
+
+**`data.references.routes` is sorted using natural (digit-aware) ordering with a short name → long name → agency ID → route ID fallback chain, rather than legacy's plain lexicographic short name → route ID comparator (deviates from legacy).**
+
+The legacy implementation (`BeanFactoryV2.getResponse(StopSearchResultBean)`) sorts `references.routes` via an injected `RouteSorting` strategy; the default implementation (`DefaultRouteSort.compareRoutes`) does a plain `String.compareTo` on each route's `nullSafeShortName` — `shortName` if set, otherwise the combined route ID directly. This is plain alphabetical ordering (e.g. route `"10"` sorts before route `"9"`) and never considers `longName`.
+
+Maglev instead sorts `references.routes` using the same natural-sort, multi-field comparator (`utils.SortModelRoutesByName`) it already uses for route references on the `stop` and `schedule-for-stop` endpoints: sort by `shortName`, falling back to `longName`, then `agencyId`, then `id`, with natural string ordering (embedded digit runs compared numerically, so `"9"` sorts before `"10"`). This favors one consistent, predictable route-reference sort behavior across all Maglev endpoints over exact, endpoint-by-endpoint conformance with each legacy comparator — `stop` and `schedule-for-stop` each have their own distinct legacy sort routines that this comparator already matches; `search-stop`'s legacy routine happens to be simpler (lexicographic, no long-name fallback), but Maglev applies the shared rule here too rather than special-casing this endpoint.
+
+Practical effect versus legacy: routes with purely numeric short names sort in numeric rather than lexicographic order, and a route with an empty `shortName` but a non-empty `longName` sorts by that `longName` text rather than falling straight to its ID.
 
 ## Open Questions
 
@@ -284,7 +292,7 @@ None.
 
 **`data.references.agencies`** — Full agency objects for all agencies that own a route appearing in `data.references.routes`. Sorted with the primary agency first (when a custom route sort is configured), then alphabetically by agency ID.
 
-**`data.references.routes`** — Full route objects for all routes referenced by `routeIds` or `staticRouteIds` across the returned stops. Sorted by route short name (alphabetically). If no short name is set, the combined route ID is used as the sort key.
+**`data.references.routes`** — Full route objects for all routes referenced by `routeIds` or `staticRouteIds` across the returned stops. Sorted by route short name (alphabetically). If no short name is set, the combined route ID is used as the sort key. *Maglev deviates from this sort rule — see [Implementation Decisions](#implementation-decisions).*
 
 **`data.references.stops`** — Parent station objects for any stop in the list that has a non-empty `parent` field.
 
