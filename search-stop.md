@@ -80,7 +80,7 @@ The server returns HTTP 401.
 
 [`BeanFactoryV2.java:147-153`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L147-L153)
 
-When `includeReferences=false` is passed, no routes are added to the references collection. `BeanFactoryV2.getResponse(StopSearchResultBean)` then calls `.sort()` unconditionally on the references route list, which is `null`, throwing a NullPointerException. The exception propagates before the response bean is set. The serialised response is the JSON literal `null` with HTTP 200. The intended behaviour is to return the stop list without a references block (as `includeReferences=false` works on other endpoints).
+When `includeReferences=false` is passed, no routes are added to the references collection. `BeanFactoryV2.getResponse(StopSearchResultBean)` then calls `.sort()` unconditionally on the references route list, which is `null`, throwing a NullPointerException. The exception propagates before the response bean is set. The serialised response is the JSON literal `null` with HTTP 200. The intended behaviour is to return the stop list without a references block (as `includeReferences=false` works on other endpoints). *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **2. `limitExceeded` reflects the pre-filter cap, not the post-filter result count**
 
@@ -113,6 +113,12 @@ Due to Java's `&&`/`||` operator precedence, the `routes != null` guard only pro
 [`StopAction.java:55`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L55)
 
 The call to `_service.getStopSuggestions(null, _input, maxCount)` hardcodes `null` as the agency ID. The service implementation ignores agency ID entirely; the search is always across all agencies. If per-agency scope was intended for future use, it is not implemented.
+
+## Implementation Decisions
+
+**`includeReferences=false` returns the stop list without a references block, rather than reproducing the legacy NullPointerException (deviates from legacy).**
+
+The legacy implementation throws a NullPointerException when `includeReferences=false` is passed, serialising the response as the JSON literal `null` with HTTP 200 (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: passing `includeReferences=false` returns the standard envelope with `data.list` populated as usual and `data.references` present but with all arrays (`agencies`, `routes`, `situations`, `stops`) empty, consistent with how `includeReferences=false` behaves on other Maglev endpoints.
 
 ## Open Questions
 
