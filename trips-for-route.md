@@ -237,7 +237,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list[].tripId`** — Combined ID of the trip on the queried route that caused this block to be selected. May differ from `status.activeTripId` when the vehicle is currently executing an interlining trip on a different route.
 
-**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the service day for this trip.
+**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the service day for this trip. For trips that extend past midnight, the service date is the previous calendar day: the block search resolves candidate service dates against the block's scheduled time range (which can exceed 24:00:00), not against the calendar date of the query time. [Source: [`BlockStatusServiceImpl.java#L180-L189`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L180-L189), [`BlockCalendarServiceImpl.java#L247-L265`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockCalendarServiceImpl.java#L247-L265)]
 
 **`data.list[].frequency`** — Frequency descriptor for headway-based service; `null` for timetable-based trips.
 
@@ -360,7 +360,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within the vehicle's block configuration. Useful for comparing against the same field in arrival-and-departure responses.
 
-**`data.list[].status.serviceDate`** — Unix millisecond timestamp of midnight for the active trip's service date.
+**`data.list[].status.serviceDate`** — Unix millisecond timestamp of midnight for the active trip's service date. Duplicates `data.list[].serviceDate`, including the previous-calendar-day behaviour for trips extending past midnight.
 
 **`data.list[].status.frequency`** — Frequency descriptor for headway-based service; `null` for timetable trips.
 
