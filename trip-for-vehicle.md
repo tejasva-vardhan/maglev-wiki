@@ -43,7 +43,7 @@ An HTTP GET to `/api/where/trip-for-vehicle/{id}.json` (or `.xml`).
 ## Main Success Scenario
 
 1. The caller issues a GET request with the required `{id}` path segment set to the vehicle's combined ID (`{agencyId}_{vehicleId}`). The agency portion is everything before the first underscore; the entity portion is everything after. [Source: `AgencyAndIdLibrary.convertFromString` — the combined-ID parsing rule.]
-2. The system looks up the block that the vehicle was executing at the requested time (defaulting to now). This lookup is based on real-time tracking data, not the static schedule: the vehicle must be actively tracked. If the vehicle has no active block at the given time, the lookup returns nothing.
+2. The system looks up the block that the vehicle was executing at the requested time (defaulting to now). This lookup is based on real-time tracking data, not the static schedule: the vehicle must be actively tracked. The block search is not confined to the calendar day of the requested time: it also checks the previous day when the request falls before 04:00 local time, and the next day when it falls after 20:00 — so a vehicle already reporting on a trip that crosses a service-day boundary (in either direction) still resolves to its correct block and service date. [Source: [`BlockFinder.java#L104-L119`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/BlockFinder.java#L104-L119)] If the vehicle has no active block at the given time, the lookup returns nothing.
 3. From the block, the system identifies which trip the vehicle is currently serving (the active trip).
 4. The response entry is assembled from the active trip's data:
    - `tripId` and `serviceDate` are always included.
@@ -230,7 +230,7 @@ The fields are carried on the shared `TripStatus` struct, which is reused across
 
 **`data.entry.tripId`** — Combined trip ID (`{agencyId}_{tripId}`) of the trip the vehicle is currently executing.
 
-**`data.entry.serviceDate`** — Unix milliseconds for midnight at the start of the service date on which this trip runs. For trips that extend past midnight, the service date is the previous calendar day.
+**`data.entry.serviceDate`** — Unix milliseconds for midnight at the start of the service date on which this trip runs. The service date is resolved from the vehicle's live trip report, not assumed to be the calendar date of the request: for trips that extend past midnight, it may be the previous calendar day; for a request made after 20:00 local time, it may instead be the next calendar day, for a vehicle already reporting on a trip that starts after midnight. [Source: [`BlockFinder.java#L104-L119`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/BlockFinder.java#L104-L119)]
 
 **`data.entry.frequency`** — For frequency-based (headway) schedules: an object with `startTime`, `endTime`, and `headway` (all in seconds since midnight of the service date). Absent for timetable-based trips.
 
