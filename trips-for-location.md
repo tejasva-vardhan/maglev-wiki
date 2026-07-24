@@ -74,10 +74,10 @@ A GET request to `/api/where/trips-for-location.json` (or `.xml`).
 The server returns HTTP 500 with the text "unknown version: _n_".
 
 **3a. `radius` exceeds 20,000 m:**  
-Due to a defect in the clamping logic (see Suspected Defects), the search area collapses to a zero-size bounding box and the response contains 0 results rather than results clamped to the 20 km maximum.
+Due to a defect in the clamping logic (see Suspected Defects), the search area collapses to a zero-size bounding box and the response contains 0 results rather than results clamped to the 20 km maximum. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **3b. `latSpan` or `lonSpan` exceeds the equivalent of a 20 km radius:**  
-Due to a defect in the clamping logic (see Suspected Defects), the maximum is not enforced and the unclamped spans are used.
+Due to a defect in the clamping logic (see Suspected Defects), the maximum is not enforced and the unclamped spans are used. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **3c. `lat` and `lon` are absent:**  
 The server treats both as 0 (the default for a double), constructs a bounding box centred on (0, 0), and applies normal processing. If (0, 0) is outside the service area, `outOfRange` is `true` in the response.
@@ -98,11 +98,11 @@ The action class accepts a `maxCount` parameter and stores it in the query objec
 
 **`radius` exceeding 20,000 m collapses the search area to a point — `SearchBoundsFactory`**
 
-In [`SearchBoundsFactory.createBounds()`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/impl/SearchBoundsFactory.java#L87-L95), when the computed bounds exceed the maximum, the clamping branch rebuilds the bounds using `_latSpan / 2` and `_lonSpan / 2`. These fields hold the raw `latSpan`/`lonSpan` query parameters, which are zero for radius-based requests. The result is a bounding box of zero area, so no vehicles pass the position check and 0 results are returned. The intended behaviour is presumably to clamp to the 20 km maximum circle. The Go implementation should clamp the radius to 20 km and use that clamped circle.
+In [`SearchBoundsFactory.createBounds()`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/impl/SearchBoundsFactory.java#L87-L95), when the computed bounds exceed the maximum, the clamping branch rebuilds the bounds using `_latSpan / 2` and `_lonSpan / 2`. These fields hold the raw `latSpan`/`lonSpan` query parameters, which are zero for radius-based requests. The result is a bounding box of zero area, so no vehicles pass the position check and 0 results are returned. The intended behaviour is presumably to clamp to the 20 km maximum circle. The Go implementation should clamp the radius to 20 km and use that clamped circle. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **`latSpan`/`lonSpan` exceeding the maximum are not clamped — `SearchBoundsFactory`**
 
-In the same [`SearchBoundsFactory.createBounds()`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/impl/SearchBoundsFactory.java#L87-L95) clamping block, the clamped span values are computed into local variables (`latSpan`, `lonSpan`) but the subsequent call to `boundsFromLatLonOffset` uses `_latSpan / 2` and `_lonSpan / 2` — the original, unclamped field values — so the limit is silently bypassed. The Go implementation should apply the clamped span values when the supplied area exceeds the maximum.
+In the same [`SearchBoundsFactory.createBounds()`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/impl/SearchBoundsFactory.java#L87-L95) clamping block, the clamped span values are computed into local variables (`latSpan`, `lonSpan`) but the subsequent call to `boundsFromLatLonOffset` uses `_latSpan / 2` and `_lonSpan / 2` — the original, unclamped field values — so the limit is silently bypassed. The Go implementation should apply the clamped span values when the supplied area exceeds the maximum. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 **`includeTrip` default is documented as `false` but the code defaults to `true` — `TripsForLocationAction`**
 
@@ -113,6 +113,12 @@ The field is initialised to `true` at [`TripsForLocationAction.java#L57`](https:
 **Wrong null guard in `getBlockLocationsAsTripDetails` — `TripStatusBeanServiceImpl`**
 
 At [`TripStatusBeanServiceImpl.java#L424`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L424), the guard reads `if (tripDetails != null)` where the intent is clearly `if (details != null)`. The `tripDetails` list is never null (it was just initialised), so the check always passes and null `TripDetailsBean` entries can be added to the result list. This is harmless in practice because `BeanFactoryV2.getTripDetailsResponse` filters out null entries before constructing the response, but a clean reimplementation should check `details != null`.
+
+## Implementation Decisions
+
+**Bounding-box clamping is fixed, not replicated (deviates from legacy).**
+
+The legacy implementation has two documented defects (see [Suspected Defects](#suspected-defects)): a `radius` over 20,000 m collapses the search area to a zero-size box instead of clamping to the 20 km maximum, and `latSpan`/`lonSpan` over the equivalent maximum are computed but silently not applied. Maglev intentionally corrects both in `BoundsFromParams` (`internal/gtfs/location_params.go`): when clamping is requested, a radius exceeding `MaxSearchRadiusInMeters` (20,000 m) is clamped to that maximum before computing the circle. For span-based requests, `latSpan`/`lonSpan` are clamped to the degree extents of that same 20,000 m circle at the request's latitude, derived via great-circle math rather than a fixed degree constant — at most latitudes this works out to roughly 0.3–0.4° of latitude, with the longitude equivalent scaling by `1/cos(latitude)` and widening toward the poles. Clients should expect results consistent with a 20 km cap, not the legacy zero-result or unclamped-span behaviour.
 
 ## Open Questions
 
