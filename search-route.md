@@ -29,7 +29,7 @@ Rider (accessing the system via a client app)
 
 - Any response — success or failure — is well-formed JSON.
 - If `input` is omitted, the server returns HTTP 404 with a field-error body (see Suspected Defects).
-- If the `input` matches no routes, the server returns HTTP 404 with the standard error envelope.
+- If the `input` matches no routes, the server returns HTTP 404 with the standard error envelope. *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 ## Success Guarantees
 
@@ -75,7 +75,7 @@ The client sends `GET /api/where/search/route.json` with an `input` query parame
 At 1: Struts2's field validator runs before the action and returns HTTP 404 with a non-standard body `{"fieldErrors": {"input": ["missing input"]}}`. This bypasses the standard OBA response envelope entirely (see Suspected Defects).
 
 **3a. No routes match the input.**
-At 3: The server returns HTTP 404 with the standard error envelope (`code: 404`, `text: "resource not found"`) ([`RouteAction.java#L46–47`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/RouteAction.java#L46-L47)).
+At 3: The server returns HTTP 404 with the standard error envelope (`code: 404`, `text: "resource not found"`) ([`RouteAction.java#L46–47`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/RouteAction.java#L46-L47)). *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 **3b. The route's GTFS `route_long_name` is an empty string (not null).**
 At 3: The route is never added to the search index. A route with an explicitly empty long name is unsearchable by any prefix. This is a consequence of the null-check in the index builder: the empty-string fallback is not treated the same as the null fallback (see Suspected Defects).
@@ -99,6 +99,24 @@ In `BundleSearchServiceImpl.init()`, the fallback `if (hint == null) hint = rout
 
 **Dead field in `RouteAction`.**
 `RouteAction` declares `private ArrivalsAndDeparturesQueryBean _query = new ArrivalsAndDeparturesQueryBean()` ([`RouteAction.java#L34`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/RouteAction.java#L34)) but never reads or writes it. This field has no effect on behaviour and is almost certainly a copy-paste artefact from another action class.
+
+---
+
+## Implementation Decisions
+
+**A no-match input returns HTTP 200 with an empty list, rather than HTTP 404 (deviates from legacy).**
+
+The legacy implementation ([`RouteAction.java#L46-L47`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/RouteAction.java#L46-L47)) explicitly checks whether the suggestion list is empty and short-circuits to a 404 in that case:
+
+```java
+ListBean<RouteBean> routeSuggestions = _service.getRouteSuggestions(null, _input, maxCount);
+if (routeSuggestions == null || routeSuggestions.getList().isEmpty())
+    return setResourceNotFoundResponse();
+```
+
+Maglev instead treats a query that matches no routes as a successful, empty result (HTTP 200, `data.list: []`). This mirrors the same decision made for the sibling `search/stop.json` endpoint (see [search-stop § Implementation Decisions](search-stop.md#implementation-decisions)).
+
+Practical effect versus legacy: callers that used to receive HTTP 404 with the standard error envelope (`code: 404`, `text: "resource not found"`) for a no-match query now receive HTTP 200 with `data.list: []`, `data.references` populated with an empty `agencies` array, and `data.limitExceeded: false`.
 
 ---
 
@@ -165,7 +183,7 @@ In `BundleSearchServiceImpl.init()`, the fallback `if (hint == null) hint = rout
 
 **`version`** — Always `2` for this endpoint.
 
-**`code`** — `200` on success; `404` when no routes match or when `input` is missing.
+**`code`** — `200` on success; `404` when no routes match or when `input` is missing. *Maglev deviates from this for the no-match case — see [Implementation Decisions](#implementation-decisions).*
 
 **`text`** — `"OK"` on success; `"resource not found"` when no routes match.
 
@@ -191,7 +209,7 @@ In `BundleSearchServiceImpl.init()`, the fallback `if (hint == null) hint = rout
 
 **`data.outOfRange`** — Always `false` for this endpoint (the field is included because the response uses a shared list type, but this endpoint performs no geographic bounding and the value is hardcoded).
 
-**`data.list`** — Array of matching route objects, sorted and ordered as described in step 5 of the main scenario.
+**`data.list`** — Array of matching route objects, sorted and ordered as described in step 5 of the main scenario. Maglev returns an empty list rather than a 404 when no routes match — see [Implementation Decisions](#implementation-decisions).
 
 **`data.references`** — Standard OBA references block. `agencies` is populated with one entry per agency that owns a route in the list. `routes` is always empty (routes appear directly in `data.list`, not in the references block).
 

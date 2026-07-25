@@ -28,7 +28,7 @@ Rider (accessing the system via a client app).
 ## Minimal Guarantees
 
 - If the input is missing, the server returns HTTP 404 with a validation error body (outside the standard envelope).
-- If no stops match the prefix query, the server returns a 404 response in the standard envelope.
+- If no stops match the prefix query, the server returns a 404 response in the standard envelope. *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 - The response never contains stops that lack revenue service (at least one scheduled stop time with unrestricted pick-up or drop-off).
 
 ## Success Guarantees
@@ -61,7 +61,7 @@ An HTTP GET request to `/api/where/search/stop.json` (or `.xml`) with a non-empt
 ## Extensions
 
 **2a. No stops match the prefix:**
-The server returns HTTP 404 with code 404 and text "resource not found" in the standard envelope.
+The server returns HTTP 404 with code 404 and text "resource not found" in the standard envelope. *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 **2b. Stops match the prefix but all are excluded by the route-type filter:**
 The server returns HTTP 200 with an empty list. `limitExceeded` may be `true` if the pre-filter count exceeded `maxCount`. (Note: the 404 check occurs before filtering, so an all-filtered result does not produce a 404.)
@@ -127,6 +127,20 @@ The legacy implementation (`BeanFactoryV2.getResponse(StopSearchResultBean)`) so
 Maglev instead sorts `references.routes` using the same natural-sort, multi-field comparator (`utils.SortModelRoutesByName`) it already uses for route references on the `stop` and `schedule-for-stop` endpoints: sort by `shortName`, falling back to `longName`, then `agencyId`, then `id`, with natural string ordering (embedded digit runs compared numerically, so `"9"` sorts before `"10"`). This favors one consistent, predictable route-reference sort behavior across all Maglev endpoints over exact, endpoint-by-endpoint conformance with each legacy comparator — `stop` and `schedule-for-stop` each have their own distinct legacy sort routines that this comparator already matches; `search-stop`'s legacy routine happens to be simpler (lexicographic, no long-name fallback), but Maglev applies the shared rule here too rather than special-casing this endpoint.
 
 Practical effect versus legacy: routes with purely numeric short names sort in numeric rather than lexicographic order, and a route with an empty `shortName` but a non-empty `longName` sorts by that `longName` text rather than falling straight to its ID.
+
+**A no-match prefix query returns HTTP 200 with an empty list, rather than HTTP 404 (deviates from legacy).**
+
+The legacy implementation ([`StopAction.java#L56-L57`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L56-L57)) explicitly checks whether the pre-filter suggestion list is empty and short-circuits to a 404 in that case:
+
+```java
+ListBean<StopBean> stopSuggestions = _service.getStopSuggestions(null, _input, maxCount);
+if (stopSuggestions == null || stopSuggestions.getList().isEmpty())
+    return setResourceNotFoundResponse();
+```
+
+Maglev instead treats a query that matches no stops as a successful, empty result (HTTP 200, `data.list: []`) — consistent with how an all-filtered result is already handled under Extension 2b. This mirrors the same decision made for the sibling `search/route.json` endpoint (see [search-route § Implementation Decisions](search-route.md#implementation-decisions)).
+
+Practical effect versus legacy: callers that used to receive HTTP 404 with the standard error envelope (`code: 404`, `text: "resource not found"`) for a no-match query now receive HTTP 200 with `data.list: []`, `data.references` present with empty arrays, and `data.limitExceeded: false`.
 
 ## Open Questions
 
@@ -196,7 +210,7 @@ None.
 }
 ```
 
-**`code`** — HTTP status mirrored in the body: 200 for success, 404 if no stops matched.
+**`code`** — HTTP status mirrored in the body: 200 for success, 404 if no stops matched. *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 **`currentTime`** — Server time at the moment the response was generated, in Unix milliseconds.
 
@@ -222,7 +236,7 @@ None.
 }
 ```
 
-**`data.list`** — Array of stop objects matching the query. May be empty if all matched stops were excluded by the route-type filter.
+**`data.list`** — Array of stop objects matching the query. May be empty if all matched stops were excluded by the route-type filter. *Maglev also returns an empty list rather than a 404 when no stops matched the prefix at all — see [Implementation Decisions](#implementation-decisions).*
 
 **`data.limitExceeded`** — `true` if the raw number of index matches exceeded `maxCount` before filtering. The actual list may contain fewer than `maxCount` entries.
 
