@@ -56,12 +56,18 @@ A `GET` request to `/api/where/agencies-with-coverage.json`.
 ### Defects that affect the use case
 
 **`maxCount` parameter accepted but never applied.**
-`AgenciesWithCoverageAction` declares a `maxCount` field and a public setter, but at [line 61](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/AgenciesWithCoverageAction.java#L61) the response factory is created without passing the accumulated limit value. As a result, the list is never truncated regardless of the `maxCount` value supplied by the caller, and `data.limitExceeded` is always `false`.
+`AgenciesWithCoverageAction` declares a `maxCount` field and a public setter, but at [line 61](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/AgenciesWithCoverageAction.java#L61) the response factory is created without passing the accumulated limit value. As a result, the list is never truncated regardless of the `maxCount` value supplied by the caller, and `data.limitExceeded` is always `false`. *Maglev intentionally corrects this — see [Implementation Decisions](#implementation-decisions).*
 
 ### Implementation defects only
 
 **Non-deterministic list ordering.**
 The coverage map is built as a `HashMap` keyed by agency ID at [`AgencyServiceImpl.java` line 113](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/AgencyServiceImpl.java#L113), so the iteration order — and therefore the order of entries in `data.list` — is not guaranteed. A clean reimplementation may produce a different (but equally valid) ordering without this being a behavioural change.
+
+## Implementation Decisions
+
+**`maxCount` is honored and `limitExceeded` reflects real truncation (deviates from legacy).**
+
+The legacy implementation accepts `maxCount` but never applies it, so `data.list` is never truncated and `data.limitExceeded` is always `false` (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: `maxCount` (or `limit`/`offset`, per Maglev's shared pagination convention) caps the number of agencies returned in `data.list`, and `data.limitExceeded` is `true` whenever the response omits agencies that would otherwise have been included.
 
 ---
 
@@ -96,7 +102,7 @@ The coverage map is built as a `HashMap` keyed by agency ID at [`AgencyServiceIm
 
 **`includeReferences`** — When `true` (the default), full agency records are included in `data.references.agencies`. When `false`, `data.references.agencies` is an empty array.
 
-**`maxCount`** — Accepted by the server but has no effect (see Suspected Defects). Intended to cap the number of agencies returned; currently ignored.
+**`maxCount`** — Accepted by the server but has no effect in the legacy implementation (see Suspected Defects). Intended to cap the number of agencies returned. *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 ---
 
@@ -142,7 +148,7 @@ The coverage map is built as a `HashMap` keyed by agency ID at [`AgencyServiceIm
 }
 ```
 
-**`data.limitExceeded`** — Always `false` (see Suspected Defects).
+**`data.limitExceeded`** — Always `false` in the legacy implementation (see Suspected Defects). *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 
 **`data.list`** — Array of agency-with-coverage entries; see `data.list[]` below.
 
