@@ -40,3 +40,5 @@
 - [[current-time][Current Time]]
 - [[block][Block]]
 - [[shape][Shape]]
+** On-Demand
+- [[GTFS-Flex Support][GTFS-Flex Support]]
