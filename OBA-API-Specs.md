@@ -72,4 +72,4 @@ and suspected defects.
 
 ## On-Demand/GTFS-Flex
 
-General Spec: [[GTFS-Flex Support][GTFS-Flex]]
+General Spec: [GTFS-Flex Support](/OneBusAway/maglev/wiki/OBA-API-Specs/GTFS-Flex%20Support)
