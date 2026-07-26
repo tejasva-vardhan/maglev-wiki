@@ -69,3 +69,7 @@ and suspected defects.
 | `GET /api/where/config.json` | [[config]] |
 | `GET /api/where/current-time.json` | [[current-time]] |
 | `GET /api/where/shape/{id}.json` | [[shape]] |
+
+## On-Demand/GTFS-Flex
+
+General Spec: [[GTFS-Flex Support][GTFS-Flex]]
