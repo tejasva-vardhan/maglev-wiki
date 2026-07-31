@@ -193,9 +193,27 @@ Related to DC-5, but distinct: on these endpoints the truncation mechanism or th
 
 **Client impact if fixed:** Clients that issue repeated requests to `routes-for-location` to enumerate the full result set (exploiting non-determinism) would no longer be able to do so, but this is an anti-pattern. Clients paginating on `limitExceeded` from `stops-for-location` or `search/stop` would receive more accurate signals.
 
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+### DC-6a: routes-for-location — non-deterministic truncation
+
+**Decision (DC-6a):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
+
+### DC-6b: stops-for-location — `limitExceeded` true but list not truncated
+
+**Decision (DC-6b):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+
+**Notes:** _(to be filled during workshop)_
+
+### DC-6c: search/stop — `limitExceeded` reflects pre-filter count
+
+**Decision (DC-6c):** [x] Preserve  [ ] Fix  [ ] Conditional fix
+
+**Notes:** Decided alongside [PR #1220](https://github.com/OneBusAway/maglev/pull/1220) ("Fix: Implement route-type exclusion for search-stops endpoint"), which implemented the DC-15 route-type/zero-route filter and, in doing so, kept the existing order of operations: the FTS5 prefix match is truncated to `maxCount` first, and the route-type filter runs on that already-truncated page, with `limitExceeded` set from the truncation step before filtering.
+
+Fixing it would mean evaluating the filter against the *entire* set of raw prefix matches before truncating to `maxCount`, not just the current page — otherwise a filtered-out stop near the front of the match order still wrongly shrinks the returned page below `maxCount`. That in turn requires either removing the `LIMIT` at the FTS5 query layer (fetching and route/agency-joining every raw match for the prefix instead of just `maxCount + 1` rows) or replacing the single fetch with a windowed fetch-filter-repeat loop against the index. Both add real query cost or real code complexity to fix a discrepancy that's already fully documented in the `search-stop` spec (Extension 2b, `data.limitExceeded` description) as something callers must treat as a raw-match indicator rather than a strict page-completeness guarantee. No client currently calls `search/stop.json` (confirmed across Wayfinder, js-sdk, iOS, Android), so there is also no near-term client harm from preserving it.
+
+Practical effect: unchanged from legacy — `data.limitExceeded: true` does not guarantee `data.list` has `maxCount` entries, and a response can be `data.list: []` with `data.limitExceeded: true` if every stop in the truncated page was subsequently filtered out.
 
 ---
 
