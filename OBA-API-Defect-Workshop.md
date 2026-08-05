@@ -166,7 +166,29 @@ Several OBA endpoints accept a `maxCount` parameter intended to cap the number o
 
 Clients targeting both implementations that use `maxCount` for pagination or display capping may receive the full dataset from legacy and a truncated set from Maglev for the same query. Result sizes cannot be assumed consistent between servers.
 
-**Decision:** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+### DC-5a: agencies-with-coverage — maxCount accepted but ignored
+
+**Decision (DC-5a):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+
+**Notes:** _(to be filled during workshop)_
+
+### DC-5b: trips-for-route — maxCount accepted but ignored
+
+**Decision (DC-5b):** [x] Preserve  [ ] Fix  [ ] Conditional fix
+
+**Notes:** Decided during review of [PR #1223](https://github.com/OneBusAway/maglev/pull/1223) ("Add maxCount validation to trips-for-route", closing #1210). The PR initially implemented Java-parity validation (reject non-numeric input with `400`, silently accept and ignore any other integer), then was extended in review to actually enforce the cap — but further review concluded `maxCount` doesn't fit this endpoint's semantics at all, independent of whether it's validated or enforced:
+
+- `data.list` is bounded by how many vehicles a route can have concurrently in service within the ±30/+10 minute query window, not open-ended the way `stops-for-location` or `route-search` results are — there's no realistic response size that needs capping.
+- Results are collected in non-deterministic order (see the endpoint's Ordering note), so truncating to `maxCount` would return an arbitrary subset, not a meaningful "top N."
+- Real clients (Wayfinder's vehicle-marker sweep, Android's trip-extrapolation layer) treat an entry's presence in `data.list` as "this vehicle is currently active." A truncated response would misrepresent still-running vehicles as offline, unlike ordinary pagination.
+
+Given this, PR #1223 was closed without merging rather than adopted. The decision goes slightly further than a strict "Preserve": Maglev doesn't implement any part of `maxCount` handling for this endpoint, including the numeric-format validation Java does perform (non-numeric input returns `200` in Maglev, not `400` as in Java). See [[trips-for-route]] Implementation Decisions.
+
+Practical effect: `maxCount` has no effect on the result count regardless of value, matching the "results never limited" core of the legacy defect; unlike legacy, non-numeric values do not trigger a `400`.
+
+### DC-5c: trips-for-location — maxCount accepted but ignored
+
+**Decision (DC-5c):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
 

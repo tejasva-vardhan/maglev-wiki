@@ -85,7 +85,7 @@ A GET request to `/api/where/trips-for-route/{id}.json`.
 ### Defects that affect the use case
 
 **`maxCount` parameter is accepted but silently ignored.**
-`TripsForRouteAction` accepts a `maxCount` query parameter, validates it, and writes it into the query bean ([`TripsForRouteAction.java#L78-L79, 109`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripsForRouteAction.java#L78-L79)). However, `TripStatusBeanServiceImpl.getTripsForRoute` never reads `query.getMaxCount()` ([`TripStatusBeanServiceImpl.java#L231-L237`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L231-L237)). All matching trips are always returned regardless of `maxCount`.
+`TripsForRouteAction` accepts a `maxCount` query parameter, validates it, and writes it into the query bean ([`TripsForRouteAction.java#L78-L79, 109`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripsForRouteAction.java#L78-L79)). However, `TripStatusBeanServiceImpl.getTripsForRoute` never reads `query.getMaxCount()` ([`TripStatusBeanServiceImpl.java#L231-L237`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L231-L237)). All matching trips are always returned regardless of `maxCount`. This describes Java's behaviour only — Maglev does not replicate even the validation half of it; see Implementation Decisions.
 
 **`data.limitExceeded` is always `false`.**
 The `ListBean` returned by `getBlockLocationsAsTripDetails` is always constructed with `limitExceeded = false` ([`TripStatusBeanServiceImpl.java#L428`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L428)). Because `maxCount` is also never applied, there is no scenario in which this field can be `true`. The field is present in the response but conveys no information.
@@ -97,6 +97,21 @@ In `TripStatusBeanServiceImpl.getBlockLocationsAsTripDetails`, the null check re
 
 **`lastKnownLocation` is set twice in `getBlockLocationAsStatusBean`.**
 Lines 270 and 276 of `TripStatusBeanServiceImpl` call `bean.setLastKnownLocation(blockLocation.getLastKnownLocation())` with the same value ([`TripStatusBeanServiceImpl.java#L270-L276`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L270-L276)). The second call is redundant and has no observable effect.
+
+---
+
+## Implementation Decisions
+
+**`maxCount` is not implemented for `trips-for-route` — no validation, no enforcement (see DC-5b).**
+Unlike the endpoints that do support it (`stops-for-location`, `routes-for-location`, `route-search`, `search-stops`), Maglev does not process `maxCount` here at all: any value, including non-numeric input, is silently accepted and has no effect. This is a deliberate decision, not an oversight, and it goes further than replicating the Suspected Defect above — Java at least validates the parameter's numeric format (rejecting non-numeric values with `400`); Maglev does not even do that.
+
+The reasoning, from #1210 / PR #1223:
+
+- **The result set is not open-ended.** Unlike `stops-for-location` or `route-search`, `data.list` here is bounded by how many vehicles a route can have concurrently in service within the ±30/+10 minute query window — never large enough to need capping.
+- **There is nothing meaningful to keep when truncating.** Per the Ordering note above, entries are collected in non-deterministic order, so a `maxCount`-bounded response would return an arbitrary subset rather than a useful "top N."
+- **Truncation would actively mislead real clients.** Client code (e.g. Wayfinder's vehicle-marker sweep, Android's trip-extrapolation layer) treats an entry's presence in `data.list` as "this vehicle is currently active" and removes or ages out anything missing. Unlike ordinary pagination, a truncated response here would read as vehicles going offline that are still running.
+
+If this is reconsidered in the future, matching Java's validate-only behaviour (reject non-numeric `maxCount`, silently accept and ignore everything else) is the minimum bar for parity — full enforcement (truncating results) is not recommended, for the reasons above.
 
 ---
 
@@ -123,7 +138,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
     },
     "maxCount": {
       "type": "integer",
-      "description": "Accepted but ignored — has no effect on result count."
+      "description": "In Java: accepted and validated (non-numeric input returns 400) but never applied to result count — a Java defect; see Suspected Defects. Maglev's behaviour deviates further; see Implementation Decisions."
     },
     "includeTrip": {
       "type": "boolean",
@@ -157,7 +172,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`time`** — Query time in Unix milliseconds. The server selects blocks active in the 40-minute window centred 10 minutes after this time (30 minutes before to 10 minutes after). Defaults to the current server time.
 
-**`maxCount`** — Integer limit on the number of results. Currently accepted and parsed but never applied; all matching trips are always returned. See Suspected Defects.
+**`maxCount`** — Integer limit on the number of results. In Java, accepted and validated (non-numeric input returns `400`) but never applied; all matching trips are always returned regardless of value — see Suspected Defects. Maglev does not implement this parameter at all, including the validation; see Implementation Decisions.
 
 **`includeTrip`** — When `true` (default), each matched trip's bean is added to `data.references.trips`. When `false`, the trip ID is still present in the list entry but no detail is available in references.
 
