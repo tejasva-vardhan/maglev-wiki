@@ -43,7 +43,7 @@ A GET request to `/api/where/trips-for-route/{id}.json`.
 
 1. The caller issues `GET /api/where/trips-for-route/{id}.json?key=…` with a combined route ID encoded in the path.
 2. The server resolves the route ID and looks up all vehicle blocks that have at least one trip on that route active within the window spanning 30 minutes before and 10 minutes after the query time. ([`BlockStatusServiceImpl.java#L182-L188`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L182-L188))
-3. For each matched block, the server identifies the trip the vehicle is currently executing (the active trip). Due to interlining, the active trip may belong to a different route than the one queried — this is expected and intentional. The `data.list[].tripId` always reflects the trip that caused the block to be selected (the queried route's trip), while `data.list[].status.activeTripId` reflects the trip the vehicle is actually running at query time.
+3. For each matched block, the server identifies the trip the vehicle is currently executing (the active trip), and populates `data.list[].tripId`, `data.list[].schedule`, `data.list[].situationIds`, and `data.list[].status.activeTripId` all from that same active trip instance — the block was selected because *some* trip in it is on the queried route, but which trip is reported is not filtered to that route. Due to interlining, the active trip may therefore belong to a different route than the one queried, and `tripId` reflects that other-route trip just like `status.activeTripId` does; the two fields are always equal. ([`TripStatusBeanServiceImpl.java#L231-L236`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L231-L236), [`#L417-L429`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L417-L429), [`#L461-L491`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L461-L491)) **Maglev deviates from this** — see Implementation Decisions.
 4. For each entry, the server optionally includes:
    - A trip bean in `data.references.trips` (controlled by `includeTrip`; default on).
    - A `schedule` object with the full stop-time sequence (controlled by `includeSchedule`; default on).
@@ -112,6 +112,25 @@ The reasoning, from #1210 / PR #1223:
 - **Truncation would actively mislead real clients.** Client code (e.g. Wayfinder's vehicle-marker sweep, Android's trip-extrapolation layer) treats an entry's presence in `data.list` as "this vehicle is currently active" and removes or ages out anything missing. Unlike ordinary pagination, a truncated response here would read as vehicles going offline that are still running.
 
 If this is reconsidered in the future, matching Java's validate-only behaviour (reject non-numeric `maxCount`, silently accept and ignore everything else) is the minimum bar for parity — full enforcement (truncating results) is not recommended, for the reasons above.
+
+---
+
+**`tripId` is decoupled from `status.activeTripId` under interlining — `schedule` and `situationIds` follow `tripId`.**
+In Java, `data.list[].tripId`, `data.list[].status.activeTripId`, `data.list[].schedule`, and `data.list[].situationIds` are all populated from the exact same active-trip instance, with no filtering by the queried route ([`TripStatusBeanServiceImpl.java#L231-L236`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L231-L236), [`#L417-L429`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L417-L429), [`#L461-L491`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L461-L491), [`#L283-L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L283-L295)). This conflation is not a documented defect — it's simply how Java is designed — so it does not appear in Suspected Defects above.
+
+Maglev deliberately diverges (#1254 / PR #1256): when a block's active trip is interlined onto a different route than the one queried, `tripId` (and the `schedule`/`situationIds` built from it) resolve to the queried-route trip that caused the block to be selected — the trip on the requested route whose scheduled time window is nearest the active trip's — while `status.activeTripId` continues to reflect whatever trip the vehicle is actually running, exactly as Java does.
+
+The reasoning:
+
+- **The queried-route trip is genuinely useful information that Java discards.** A client that asked for route A's active vehicles has to already know route A's trip to make sense of an entry; reporting the other route's trip in `tripId` under interlining tells it nothing about the route it asked about.
+- **No surveyed client relies on the two fields being equal.** iOS, the JS SDK, and Wayfinder don't read `tripId` from this endpoint at all. Android's own trip-extrapolation layer already treats `tripId`, `status.activeTripId`, and `schedule` as independent, not-safe-to-assume-consistent values — it keys off `status.activeTripId` and fetches schedule/route data separately for interlined continuations, citing prior interlining bugs in its own code. Maglev's decoupling is consistent with how the most sophisticated existing client already defends against exactly this ambiguity.
+
+Trade-offs to be aware of:
+
+- **`schedule` and `status` can now describe two different trips in the same entry.** `schedule.stopTimes` belongs to the resolved queried-route trip (potentially scheduled hours from the query time), while `status.position`/`distanceAlongTrip`/etc. describe the actively-running trip. No response field signals this split to a client rendering both together.
+- **If no queried-route trip can be found anywhere in the block** (e.g. the block's only queried-route trip runs under a service_id that isn't active today or yesterday), Maglev falls back to Java's conflated behaviour for that one entry — `tripId` equals `status.activeTripId` — rather than omitting the entry, preserving the Success Guarantee of one entry per active block.
+
+If this is reconsidered in the future, the fallback is Java's original behaviour: drop the interlining resolution and always set `tripId` equal to `status.activeTripId`.
 
 ---
 
@@ -250,13 +269,13 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 }
 ```
 
-**`data.list[].tripId`** — Combined ID of the trip on the queried route that caused this block to be selected. May differ from `status.activeTripId` when the vehicle is currently executing an interlining trip on a different route.
+**`data.list[].tripId`** — Combined ID of the trip the vehicle is currently executing. In Java this is always equal to `status.activeTripId`, regardless of whether that trip is on the queried route — see Main Success Scenario step 3. **Maglev deviates from this**: `tripId` resolves to the queried-route trip that caused the block to be selected, which may differ from `status.activeTripId`; see Implementation Decisions.
 
 **`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the service day for this trip. For trips that extend past midnight, the service date is the previous calendar day: the block search resolves candidate service dates against the block's scheduled time range (which can exceed 24:00:00), not against the calendar date of the query time. [Source: [`BlockStatusServiceImpl.java#L180-L189`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L180-L189), [`BlockCalendarServiceImpl.java#L247-L265`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockCalendarServiceImpl.java#L247-L265)]
 
 **`data.list[].frequency`** — Frequency descriptor for headway-based service; `null` for timetable-based trips.
 
-**`data.list[].situationIds`** — IDs of active service alerts applicable to this trip. Empty array if none. Full alert details appear in `data.references.situations`.
+**`data.list[].situationIds`** — IDs of active service alerts applicable to this trip. Empty array if none. Full alert details appear in `data.references.situations`. In Java "this trip" is always the active trip (same as `status.activeTripId`); under Maglev's interlining deviation, it follows `tripId` instead — see Implementation Decisions.
 
 **`data.list[].schedule`** — Present only when `includeSchedule=true`. See `data.list[].schedule` below.
 
@@ -281,7 +300,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list[].schedule.timeZone`** — IANA timezone identifier for the agency operating this trip, e.g. `"America/Los_Angeles"`.
 
-**`data.list[].schedule.stopTimes`** — Ordered array of scheduled stop times for this trip. See `data.list[].schedule.stopTimes[]` below.
+**`data.list[].schedule.stopTimes`** — Ordered array of scheduled stop times for this trip. See `data.list[].schedule.stopTimes[]` below. In Java "this trip" is always the active trip (same as `status.activeTripId`), so `schedule` and `status` never describe two different trips. Under Maglev's interlining deviation, `schedule` (and `previousTripId`/`nextTripId` below) follow `tripId` instead of the active trip — see Implementation Decisions.
 
 **`data.list[].schedule.previousTripId`** — Combined ID of the preceding trip in this vehicle's block (i.e. the trip the same vehicle ran immediately before), if any. Present when the vehicle has a prior trip in its block for this service day.
 
@@ -371,7 +390,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 }
 ```
 
-**`data.list[].status.activeTripId`** — Combined ID of the trip the vehicle is currently executing. Equals `tripId` when the vehicle is on the queried route's trip; differs from `tripId` when the vehicle is interlining on an adjacent block trip that belongs to a different route.
+**`data.list[].status.activeTripId`** — Combined ID of the trip the vehicle is currently executing. In Java this is always equal to `tripId` — both are populated from the same active trip instance. ([`TripStatusBeanServiceImpl.java#L283-L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L283-L295)) **Maglev deviates from this**: `activeTripId` always reflects the vehicle's actual running trip, and may differ from `tripId` when the vehicle is interlining on an adjacent block trip that belongs to a different route — see Implementation Decisions.
 
 **`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within the vehicle's block configuration. Useful for comparing against the same field in arrival-and-departure responses.
 
