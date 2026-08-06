@@ -429,7 +429,7 @@ None.
 
 **`data.references.routes`** — Route beans for all routes whose trips appear in the response.
 
-**`data.references.stops`** — Stop beans for all stops referenced by the response (closest stop and next stop from status objects; all stops in schedule stop-time arrays).
+**`data.references.stops`** — Stop beans for all stops referenced by the response (closest stop and next stop from status objects; all stops in schedule stop-time arrays). Each bean's `direction` field is taken from the feed when defined, otherwise inferred from shape geometry — see [[Stop-Direction-Calculation]].
 
 **`data.references.trips`** — Trip beans for all trips referenced in list entries. Populated only when `includeTrip=true` (the default).
 

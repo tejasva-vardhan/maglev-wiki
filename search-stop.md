@@ -277,7 +277,7 @@ None.
 
 **`data.list[].lon`** — Longitude of the stop in decimal degrees.
 
-**`data.list[].direction`** — Cardinal or intercardinal direction of travel at this stop (e.g. `"SW"`, `"N"`). May be empty or absent.
+**`data.list[].direction`** — Cardinal or intercardinal direction of travel at this stop (e.g. `"SW"`, `"N"`). Taken from the feed when defined; otherwise inferred from shape geometry, or empty/absent if neither is available. See [[Stop-Direction-Calculation]] for the inference algorithm.
 
 **`data.list[].locationType`** — GTFS `location_type` value: `0` = stop/platform, `1` = station, `2` = station entrance/exit, `3` = generic node, `4` = boarding area.
 

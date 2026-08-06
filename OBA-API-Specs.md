@@ -73,3 +73,11 @@ and suspected defects.
 ## On-Demand/GTFS-Flex
 
 General Spec: [GTFS-Flex Support](/OneBusAway/maglev/wiki/GTFS-Flex%20Support)
+
+## Shared Algorithms
+
+Behavior shared across multiple endpoint pages, documented once and linked from each.
+
+| Topic | Page |
+|-------|------|
+| Stop `direction` field inference from shape geometry | [[Stop-Direction-Calculation]] |

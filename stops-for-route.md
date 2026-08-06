@@ -275,7 +275,7 @@ When `includePolylines` is `false`, the factory sets `group.setPolylines(null)` 
 }
 ```
 
-**`data.references.stops`** — Full stop objects for every stop ID that appears in `data.entry.stopIds` or in any `stopGroups[].stopIds`. Each stop object includes: `id` (combined), `lat`, `lon`, `name`, `code`, `direction`, `locationType`, `wheelchairBoarding`, `routeIds`, and `staticRouteIds`.
+**`data.references.stops`** — Full stop objects for every stop ID that appears in `data.entry.stopIds` or in any `stopGroups[].stopIds`. Each stop object includes: `id` (combined), `lat`, `lon`, `name`, `code`, `direction` (taken from the feed when defined, otherwise inferred from shape geometry — see [[Stop-Direction-Calculation]]), `locationType`, `wheelchairBoarding`, `routeIds`, and `staticRouteIds`.
 
 **`data.references.routes`** — Full route object for the queried route, including `id`, `agencyId`, `shortName`, `longName`, `description`, `type`, `url`, `color`, and `textColor`.
 

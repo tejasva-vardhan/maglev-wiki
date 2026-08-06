@@ -199,7 +199,7 @@ Maglev's `stops` table has no `agency_id` column; agency ownership of a stop is 
 
 **`data.entry.code`** — Short public stop code shown on signage (e.g. `"11870"`). Taken from the GTFS `stop_code` field; falls back to the entity portion of the combined ID when the feed supplies no code.
 
-**`data.entry.direction`** — Compass direction of travel at this stop (e.g. `"N"`, `"S"`, `"NE"`). Optional GTFS extension; absent when the feed does not supply it. Serialised as an empty string `""` when absent.
+**`data.entry.direction`** — Compass direction of travel at this stop (e.g. `"N"`, `"S"`, `"NE"`). Taken from the GTFS extension when the feed supplies one; otherwise inferred from the geometry of shapes serving the stop, or serialised as an empty string `""` when neither is available. See [[Stop-Direction-Calculation]] for the inference algorithm.
 
 **`data.entry.locationType`** — GTFS location type integer: `0` = boarding/alighting platform (default), `1` = station, `2` = station entrance or exit, `3` = generic pathway node, `4` = boarding area.
 

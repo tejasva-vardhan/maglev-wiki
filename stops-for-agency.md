@@ -223,7 +223,7 @@ None.
 **`data.list[].lon`** — Stop longitude in decimal degrees (WGS 84).
 **`data.list[].name`** — Human-readable stop name (e.g. `"1st Ave & Spring St"`).
 **`data.list[].code`** — Passenger-facing stop code (e.g. `"100"`). Falls back to the entity portion of the combined stop ID when the feed does not define a code.
-**`data.list[].direction`** — Cardinal or intercardinal compass direction indicating the direction of travel at this stop (e.g. `"N"`, `"SW"`). Empty string when not defined in the feed.
+**`data.list[].direction`** — Cardinal or intercardinal compass direction indicating the direction of travel at this stop (e.g. `"N"`, `"SW"`). Taken from the feed when defined; otherwise inferred from shape geometry, or empty string if neither is available. See [[Stop-Direction-Calculation]] for the inference algorithm.
 **`data.list[].locationType`** — GTFS location type: `0` = boarding stop or platform (the default), `1` = station, `2` = entrance or exit.
 **`data.list[].wheelchairBoarding`** — One of `"ACCESSIBLE"`, `"NOT_ACCESSIBLE"`, or `"UNKNOWN"`, derived from the GTFS `wheelchair_boarding` field.
 **`data.list[].routeIds`** — Combined IDs of all route collections serving this stop across any service date, in `agencyId_entityId` form.

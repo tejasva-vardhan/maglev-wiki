@@ -317,7 +317,7 @@ None. All observable behaviours were resolved through static source analysis and
 
 **`data.list[].code`** — Passenger-facing stop code, e.g. `"75403"`. Corresponds to the value in the feed's `stop_code` field, or falls back to the raw stop entity ID if no code is defined. May be an empty string if absent.
 
-**`data.list[].direction`** — Compass direction indicating which way a vehicle is travelling when serving this stop (e.g. `"N"`, `"SE"`). Derived from the feed; may be absent (empty string) if not provided.
+**`data.list[].direction`** — Compass direction indicating which way a vehicle is travelling when serving this stop (e.g. `"N"`, `"SE"`). Taken from the feed when defined; otherwise inferred from shape geometry, or empty string if neither is available. See [[Stop-Direction-Calculation]] for the inference algorithm.
 
 **`data.list[].locationType`** — GTFS `location_type` value: `0` = boarding/alighting stop, `1` = station, `2` = entrance/exit. The majority of stops are `0`.
 

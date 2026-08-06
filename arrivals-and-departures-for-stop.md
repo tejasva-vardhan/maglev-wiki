@@ -235,7 +235,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`data.entry`** — The stop departure board; see below.
 
-**`data.references`** — Full objects for every route, trip, stop, agency, and service alert ID referenced in the entry.
+**`data.references`** — Full objects for every route, trip, stop, agency, and service alert ID referenced in the entry. Each stop record's `direction` field is taken from the feed when defined, otherwise inferred from shape geometry — see [[Stop-Direction-Calculation]].
 
 ---
 

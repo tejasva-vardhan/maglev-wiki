@@ -487,7 +487,7 @@ None.
 
 **`data.references.routes`** — Full route records for all route IDs referenced in the entry.
 
-**`data.references.stops`** — Full stop records for the queried stop and any stops referenced from `tripStatus`.
+**`data.references.stops`** — Full stop records for the queried stop and any stops referenced from `tripStatus`. Each record's `direction` field is taken from the feed when defined, otherwise inferred from shape geometry — see [[Stop-Direction-Calculation]].
 
 **`data.references.trips`** — Full trip records for the queried trip and the active trip referenced in `tripStatus`.
 
