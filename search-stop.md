@@ -269,7 +269,7 @@ None.
 
 **`data.list[].id`** — Combined stop ID in `{agencyId}_{entityId}` form (e.g. `1_1085`).
 
-**`data.list[].code`** — The human-readable stop code as published in the feed (e.g. `"1085"`). Typically shown on physical stop signs.
+**`data.list[].code`** — The human-readable stop code as published in the feed (e.g. `"1085"`). Typically shown on physical stop signs. Falls back to the entity portion of the combined ID when the feed supplies no code, matching `data.entry.code` on [`stop`](stop.md) — legacy's stop-suggestion index is built from `StopBean` objects fetched via the same `TransitDataService.getStop()` call that backs the single-stop endpoint ([`BundleSearchServiceImpl.java:100`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L100)), which ultimately resolves through [`fillStopBean`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopBeanServiceImpl.java#L173-L185)'s `StringLibrary.getBestName(narrative.getCode(), stop.getId().getId())`.
 
 **`data.list[].name`** — The stop name as it appears in the feed (e.g. `"Pine St & 9th Ave"`).
 
