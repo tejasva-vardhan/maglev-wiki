@@ -76,7 +76,7 @@ per-agency stop lists. The differences that remain:
 |---|---|---|
 | Static inputs | N per-agency zips, one `GtfsBundle` each | Exactly one zip |
 | Stop ownership | Exactly one agency — the feed's `defaultAgencyId` | Every agency whose routes serve the stop; a stop served by MTS and UCSD routes appears in **both** agencies' `stop-ids-for-agency` lists |
-| Stops served by no trip | Owned by the feed's default agency | Owned by no agency (transitive joins find nothing); still returned by location/search endpoints |
+| Stops served by no trip | Owned by the feed's default agency | Owned by no agency (transitive joins find nothing); dropped entirely by location/search endpoints today, since no agency can be resolved for the combined ID (verified 2026-08 against both query and non-query modes of `stops-for-location`) |
 | Public stop ID prefix | The owning agency, fixed at build time | Endpoint-dependent: per-agency/per-route endpoints stamp the *requested* agency; location/search endpoints use the first agency returned by `GetAgenciesForStops` (unordered) — see §3.3 |
 | Absorbed-stop lookups | 404 (entity never stored) | n/a — no consolidation |
 | Cross-feed ID collisions | Impossible — every ID is an `AgencyAndId` pair | n/a today (single feed); would be primary-key violations if feeds were naively concatenated |
