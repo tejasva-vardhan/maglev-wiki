@@ -76,7 +76,7 @@ per-agency stop lists. The differences that remain:
 |---|---|---|
 | Static inputs | N per-agency zips, one `GtfsBundle` each | Exactly one zip |
 | Stop ownership | Exactly one agency — the feed's `defaultAgencyId` | Every agency whose routes serve the stop; a stop served by MTS and UCSD routes appears in **both** agencies' `stop-ids-for-agency` lists |
-| Stops served by no trip | Owned by the feed's default agency | Owned by no agency (transitive joins find nothing); dropped entirely by location/search endpoints today, since no agency can be resolved for the combined ID (verified 2026-08 against both query and non-query modes of `stops-for-location`) |
+| Stops served by no trip | Owned by the feed's default agency | Owned by no agency (transitive joins find nothing); dropped entirely by location/search endpoints today, since no agency can be resolved for the combined ID (verified 2026-08 against both query and non-query modes of `stops-for-location`) — see §10 below |
 | Public stop ID prefix | The owning agency, fixed at build time | Endpoint-dependent: per-agency/per-route endpoints stamp the *requested* agency; location/search endpoints use the first agency returned by `GetAgenciesForStops` (unordered) — see §3.3 |
 | Absorbed-stop lookups | 404 (entity never stored) | n/a — no consolidation |
 | Cross-feed ID collisions | Impossible — every ID is an `AgencyAndId` pair | n/a today (single feed); would be primary-key violations if feeds were naively concatenated |
@@ -787,3 +787,32 @@ them, v1 stands on its own for the SDMTS deployment, and v2 is scheduled
 cleanup. If they are mostly coincidental numeric overlap, "rename upstream
 forever" is a fragile permanent contract — promote v2 to the main plan and
 land v1's PRs as its first phase.
+
+---
+
+## 10. Deviations from legacy due to the single-feed limitation
+
+§2.1 establishes the root cause common to every row below: Maglev derives a
+stop's agency transitively, per response, from the routes serving it,
+because `stops` has no `agency_id` column and only one static feed is ever
+loaded. Legacy never has this problem — federated ingest pre-assigns every
+entity (including stops with no service at all) an owning agency as part of
+its `AgencyAndId`, independent of whether any route currently serves it.
+
+This table tracks every endpoint-level behavior known to diverge from
+legacy specifically because of this limitation, so they can be revisited as
+a batch once §3–§9 (multi-feed support) lands, rather than rediscovered one
+at a time. Unlike the `OBA-API-Defect-Workshop.md` DC-N tracker, these
+aren't legacy defects to preserve-or-fix — they're Maglev limitations with
+one known fix (federated feed support), so there's no decision to record
+beyond "revisit when that ships."
+
+| Behavior | Legacy | Maglev today | Full write-up |
+|---|---|---|---|
+| `stops-for-location` stop-code (`query`) search, matched stop has no routes | Returned regardless — routes are loaded with no routes-empty filter in the stop-code path | Dropped — `agency == nil` in the results loop, since no `stop_times` row means no resolvable agency | [[stops-for-location]] § Implementation Decisions |
+| `search-stop`, parent station reached through children under different agencies | One stable ID and one `references.stops` entry per physical station, fixed at ingest | One `references.stops` entry per (parent station, resolving agency) pair actually referenced | [[search-stop]] § Implementation Decisions |
+| Agency prefix on a stop's combined ID (location/search endpoints) | Fixed at build time, stable per stop | Whichever agency `GetAgenciesForStops` happens to return first (no `ORDER BY`); non-deterministic across requests for a stop served by more than one agency's routes | §2.1–§2.2 above |
+
+Rows should be added here whenever a new instance of this same root cause
+is found, even if its own endpoint page also documents it — this table
+exists so the full set is visible in one place.
