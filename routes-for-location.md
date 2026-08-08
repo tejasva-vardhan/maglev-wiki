@@ -83,6 +83,8 @@ The server silently clamps `maxCount` to 50. No error is returned. ([`MaxCountSu
 
 When the number of matching routes exceeds `maxCount`, the list is randomly shuffled before the tail is discarded. Repeated requests with identical parameters return different subsets of routes. The `limitExceeded` flag tells callers that truncation occurred but does not convey that the selection is random. The likely intended behaviour is a deterministic selection — for example, retaining the routes nearest to the search centre, or the routes with the shortest IDs — so that clients can paginate or display consistent results.
 
+Maglev's implementation of this endpoint already truncates deterministically (nearest-first by distance) rather than reproducing the shuffle — see [DC-6a in the defect workshop](OBA-API-Defect-Workshop.md#dc-6-non-deterministic-or-incorrect-result-truncation) and [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions), which records the reasoning for the same choice made on the sibling stop-code search path.
+
 **2. `nullSafeShortName` exposed as a response field — `RouteV2Bean.getNullSafeShortName`**
 
 [`RouteV2Bean.java#L62-L66`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/RouteV2Bean.java#L62-L66)

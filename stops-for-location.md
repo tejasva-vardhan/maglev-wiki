@@ -68,7 +68,7 @@ A client sends `GET /api/where/stops-for-location.json` with `lat` and `lon` que
 
    - From those candidates, only those whose coordinates fall within the derived search bounds are kept. ([`StopsBeanServiceImpl.java#L204–L206`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L204))
 
-   - If more stops match than `maxCount`, the matched stops are randomly shuffled and truncated to `maxCount`; `limitExceeded` is set to `true`. ([`BeanServiceSupport.java#L23–L31`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/BeanServiceSupport.java#L23))
+   - If more stops match than `maxCount`, the matched stops are randomly shuffled and truncated to `maxCount`; `limitExceeded` is set to `true`. ([`BeanServiceSupport.java#L23–L31`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/BeanServiceSupport.java#L23)) Maglev does not reproduce this shuffle — see [Implementation Decisions](#implementation-decisions).
 
    - If no candidates fall within the bounds, the single geographically closest candidate from the full set of 10 is returned regardless of its distance from the centre point. ([`StopsBeanServiceImpl.java#L228–L229`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L228))
 
@@ -129,6 +129,16 @@ When both `query` and `routeType` are provided, the route-type filter is added t
 `StopsBeanServiceImpl` ([`StopsBeanServiceImpl.java#L130–L134`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L130))
 
 When `routeType` is not specified, the raw geospatial candidate IDs are shuffled and truncated before stop beans are loaded and filtered by active routes. This means `limitExceeded=true` is set based on the raw count in the area, not the count after route filtering. A clean reimplementation would not have this ordering issue.
+
+## Implementation Decisions
+
+**Stop-code (`query`) truncation is deterministic, nearest-first, rather than legacy's random shuffle (deviates from legacy).**
+
+Legacy shuffles the in-bounds candidate list before truncating to `maxCount` in the stop-code search path too, not just the geospatial path. `StopsForLocationAction` sets query type `BOUNDS_OR_CLOSEST` whenever `query` is supplied ([`StopsForLocationAction.java#L150–L152`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/StopsForLocationAction.java#L150)), and `StopsBeanServiceImpl.getStopsByBoundsAndQuery` only takes the distance-sorted, deterministic-truncation branch when the query type is `ORDERED_BY_CLOSEST` — that type is reserved for the `routeType` path, not this one. For `BOUNDS_OR_CLOSEST` it falls through to `BeanServiceSupport.checkLimitExceeded`, the same `Collections.shuffle`-before-truncate helper used by the geospatial path (see MSS step 6, third bullet, and [`StopsBeanServiceImpl.java#L213–L225`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd68b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopsBeanServiceImpl.java#L213)).
+
+Maglev instead sorts the in-bounds candidates by distance to the search centre and truncates deterministically, keeping the nearest `maxCount` matches. This follows the same choice already shipped for `routes-for-location`'s truncation, which orders by distance in SQL rather than shuffling — see [routes-for-location § Suspected Defects, #1](routes-for-location.md#suspected-defects) and [DC-6a/DC-6d in the defect workshop](OBA-API-Defect-Workshop.md#dc-6-non-deterministic-or-incorrect-result-truncation). Determinism also fits this endpoint's purpose better than legacy's behaviour here: a stop-code lookup is trying to find *a* specific stop, so keeping the nearest candidates on truncation is more useful to a caller than an arbitrary random subset, and it makes repeated identical requests return identical results.
+
+Practical effect versus legacy: repeated identical requests that exceed `maxCount` in-bounds matches for a stop code now consistently return the same nearest stops, rather than a random subset that can vary between requests. No client inspected during this decision (Wayfinder, iOS, Android, the JS SDK) relies on the random-sampling behaviour here. If this proves wrong, the fallback is to reproduce legacy's `Collections.shuffle`-before-truncate exactly, matching the geospatial (non-`query`) path's existing shuffle a few lines above this code in the same function (`GetStopsForLocation` in `internal/gtfs/gtfs_manager.go`).
 
 ## Open Questions
 
@@ -210,7 +220,7 @@ None. All observable behaviours were resolved through static source analysis and
 
 **`query`** — A stop code to match against. When supplied, the search uses a text index rather than a pure geospatial lookup. At most 10 code matches are considered, and the results are filtered to those within the derived bounds. If none fall within the bounds, the geographically closest code match is returned as a fallback. Note that `time` has no effect on route filtering in this mode, and `routeType` is silently ignored.
 
-**`maxCount`** — Maximum number of stops to return. Default 100. The server silently caps this at 250; values above 250 are treated as 250. A value of zero or less causes a 400 validation error. When the geospatial candidate pool exceeds this limit (without `routeType`), the pool is randomly shuffled before truncation, making results non-deterministic.
+**`maxCount`** — Maximum number of stops to return. Default 100. The server silently caps this at 250; values above 250 are treated as 250. A value of zero or less causes a 400 validation error. When the geospatial candidate pool exceeds this limit (without `routeType`), the pool is randomly shuffled before truncation, making results non-deterministic. The stop-code (`query`) candidate pool is also randomly shuffled before truncation in legacy; Maglev truncates it deterministically by distance instead — see [Implementation Decisions](#implementation-decisions).
 
 **`routeType`** — One or more GTFS route type integers, comma-separated. Restricts results to stops served by at least one route of a listed type. The type is matched against the routes active for the `time` context. When combined with `query`, this parameter is silently ignored (see Suspected Defects).
 
@@ -272,7 +282,7 @@ None. All observable behaviours were resolved through static source analysis and
 
 **`data.list`** — Array of stop objects matching the query. Sorted lexicographically by combined stop ID.
 
-**`data.limitExceeded`** — `true` if the candidate pool in the area exceeded `maxCount`. When `true` without `routeType`, the result was randomly sampled; repeated requests may return different stops. When `true` with `routeType`, all matching stops are returned despite the flag (see Suspected Defects).
+**`data.limitExceeded`** — `true` if the candidate pool exceeded `maxCount`. In the geospatial (no-`query`) path, when `true` without `routeType`, legacy's result was randomly sampled and repeated requests may return different stops; when `true` with `routeType`, all matching stops are returned despite the flag (see Suspected Defects). In the stop-code (`query`) path, legacy also randomly samples before truncating; Maglev instead truncates deterministically by distance — see [Implementation Decisions](#implementation-decisions).
 
 **`data.outOfRange`** — `true` when the search area does not intersect any agency's coverage area. The list is empty when this flag is `true`.
 

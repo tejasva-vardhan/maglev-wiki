@@ -196,9 +196,11 @@ Practical effect: `maxCount` has no effect on the result count regardless of val
 
 ## DC-6: Non-deterministic or incorrect result truncation
 
-Related to DC-5, but distinct: on these endpoints the truncation mechanism or the `limitExceeded` flag itself behaves incorrectly rather than being ignored entirely. Three endpoints are affected, each with a different bug in how results are capped and signalled.
+Related to DC-5, but distinct: on these endpoints the truncation mechanism or the `limitExceeded` flag itself behaves incorrectly rather than being ignored entirely. Four code paths across three endpoints are affected, each with a different bug in how results are capped and signalled.
 
-**Root cause (routes-for-location):** `BeanServiceSupport.checkLimitExceeded` randomly shuffles the list before discarding the tail when results exceed `maxCount`. The same codebase omits this shuffle on other endpoints, so routes-for-location is uniquely non-deterministic.
+**Root cause (routes-for-location):** `BeanServiceSupport.checkLimitExceeded` randomly shuffles the list before discarding the tail when results exceed `maxCount`.
+
+**Root cause (stops-for-location, query-mode path):** The stop-code (`query`) search path funnels through the same `BeanServiceSupport.checkLimitExceeded` shuffle-then-truncate helper as routes-for-location: `StopsForLocationAction` sets query type `BOUNDS_OR_CLOSEST` whenever `query` is supplied, and `StopsBeanServiceImpl.getStopsByBoundsAndQuery` only skips the shuffle for query type `ORDERED_BY_CLOSEST`, which is reserved for the `routeType` path, not this one. This shares routes-for-location's exact root cause but was not previously tracked as a DC-6 instance — see [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions) for the full citation trail.
 
 **Root cause (stops-for-location, routeType path):** When `routeType` is applied in the geospatial (non-query) path, `limitExceeded` is set to `true` when the post-filter count exceeds `maxCount`, but the list is not actually truncated before it is returned.
 
@@ -206,26 +208,33 @@ Related to DC-5, but distinct: on these endpoints the truncation mechanism or th
 
 **Affected endpoints:**
 - [[routes-for-location]] — non-deterministic truncation
+- [[stops-for-location]] — non-deterministic truncation in stop-code (`query`) search
 - [[stops-for-location]] — `limitExceeded: true` but list not truncated (when using `routeType` without `query`)
 - [[search-stop]] — `limitExceeded` reflects pre-filter count, not the size of the returned list
 
-**Observed behaviour:** Repeated identical requests to `routes-for-location` return different subsets when truncation occurs. `stops-for-location` returns more results than `maxCount` permits. `search/stop` signals truncation even when the returned list is within the limit.
+**Observed behaviour:** Repeated identical requests to `routes-for-location`, or to `stops-for-location` with a stop-code `query` that exceeds `maxCount` in-bounds matches, return different subsets when truncation occurs. `stops-for-location` (routeType path) returns more results than `maxCount` permits. `search/stop` signals truncation even when the returned list is within the limit.
 
 **Intended behaviour:** Truncation should be deterministic, accurate, and consistent: the list capped at `maxCount` and `limitExceeded` indicating whether additional results were discarded.
 
-**Client impact if fixed:** Clients that issue repeated requests to `routes-for-location` to enumerate the full result set (exploiting non-determinism) would no longer be able to do so, but this is an anti-pattern. Clients paginating on `limitExceeded` from `stops-for-location` or `search/stop` would receive more accurate signals.
+**Client impact if fixed:** Clients that issue repeated requests to `routes-for-location`, or to `stops-for-location`'s stop-code search, to enumerate the full result set (exploiting non-determinism) would no longer be able to do so, but this is an anti-pattern. Clients paginating on `limitExceeded` from `stops-for-location`'s routeType path or `search/stop` would receive more accurate signals.
 
 ### DC-6a: routes-for-location — non-deterministic truncation
 
-**Decision (DC-6a):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
+**Decision (DC-6a):** [ ] Preserve  [x] Fix  [ ] Conditional fix
 
-**Notes:** _(to be filled during workshop)_
+**Notes:** Maglev's `routes-for-location` implementation (`queryRoutesInBounds` in `internal/gtfs/gtfs_manager.go`) already truncates deterministically by ascending distance rather than reproducing the shuffle — that behaviour predates this decision being formally recorded. Retroactively ratified as `Fix` during review of [PR #1270](https://github.com/OneBusAway/maglev/pull/1270), which extended the same choice to the previously-untracked `stops-for-location` query-mode instance below (DC-6d). Reasoning recorded in [routes-for-location § Suspected Defects, #1](routes-for-location.md#suspected-defects) and [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions).
 
 ### DC-6b: stops-for-location — `limitExceeded` true but list not truncated
 
 **Decision (DC-6b):** [ ] Preserve  [ ] Fix  [ ] Conditional fix
 
 **Notes:** _(to be filled during workshop)_
+
+### DC-6d: stops-for-location (query mode) — non-deterministic truncation
+
+**Decision (DC-6d):** [ ] Preserve  [x] Fix  [ ] Conditional fix
+
+**Notes:** Decided alongside [PR #1270](https://github.com/OneBusAway/maglev/pull/1270) ("Fix stop-code queries in stops-for-location"), which introduced the feed-wide stop-code search with closest-match fallback. Rather than reproducing legacy's shuffle-before-truncate for the stop-code candidate pool, Maglev sorts by distance and truncates deterministically, matching the precedent already shipped (if not previously formally decided) for `routes-for-location` — see DC-6a above. Full reasoning, citations, and the fallback if reconsidered are recorded in [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions).
 
 ### DC-6c: search/stop — `limitExceeded` reflects pre-filter count
 
