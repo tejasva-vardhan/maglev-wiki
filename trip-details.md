@@ -62,7 +62,7 @@ Client sends a GET request to `/api/where/trip-details/{id}.json` with a valid A
 
    b. If the trip is frequency-based, populates `frequency` with window start/end times (as Unix milliseconds) and the headway in seconds.
 
-   c. If `includeTrip` is true, adds the full trip record (route ID, headsign, direction, block ID, shape ID, and service ID) to the references block.
+   c. If `includeTrip` is true, adds the full trip record for the *requested* trip (route ID, headsign, direction, block ID, shape ID, and service ID) to the references block. [Source: [`TripStatusBeanServiceImpl.java#L464–L468`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L464-L468)] This flag has no bearing on the *active* trip added in step e below: `getBlockLocationAsStatusBean` sets it on the status bean unconditionally, with no dependency on this flag, whenever a `status` block is built. [Source: [`TripStatusBeanServiceImpl.java#L294–L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L294-L295)]
 
    d. If `includeSchedule` is true, populates `schedule` with the trip's timezone, the complete ordered list of stop times (each with arrival and departure times expressed as seconds since midnight of the service date, the combined stop ID, the distance from the start of the trip in metres, and, when available, historical occupancy and a stop-level headsign override), and the combined IDs of the preceding and following trips in the block (if any). All stops referenced in the schedule are added to the references block.
 
@@ -118,7 +118,7 @@ The `status` key is absent from the entry entirely.
 The `schedule` key is absent from the entry entirely; no stops are added to references.
 
 **4c. `includeTrip` is false.**
-The trip record is not added to references; only the preceding and following block trips (if any, and only when `includeSchedule` is true) appear in `references.trips`.
+The requested trip's own record is not added to references on that account; only the preceding and following block trips (if any, and only when `includeSchedule` is true) appear in `references.trips` from that path. This does not affect the active trip: if `includeStatus` is true and a tracking record exists, `status.activeTripId`'s full trip record is still added to `references.trips`, independent of `includeTrip` — see steps 4.c and 4.e in the Main Success Scenario. [Source: [`TripStatusBeanServiceImpl.java#L294–L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L294-L295)]
 
 **4f. No service alerts apply to this trip.**
 `situationIds` is an empty array `[]`.
