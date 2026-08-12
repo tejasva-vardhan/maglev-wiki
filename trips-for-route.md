@@ -33,7 +33,7 @@ Rider (accessing the system via a client application).
 ## Success Guarantees
 
 - The response contains one entry per active block whose scheduled trips overlap the query window, with real-time status and/or schedule as requested.
-- Trip beans for all returned entries appear in `data.references.trips`.
+- Trip beans for all returned entries appear in `data.references.trips`. **Maglev does not always uphold this** — a reference-lookup failure can omit a bean while the referencing ID remains in `data.list`; see Implementation Decisions.
 
 ## Trigger
 
@@ -131,6 +131,21 @@ Trade-offs to be aware of:
 - **If no queried-route trip can be found anywhere in the block** (e.g. the block's only queried-route trip runs under a service_id that isn't active today or yesterday), Maglev falls back to Java's conflated behaviour for that one entry — `tripId` equals `status.activeTripId` — rather than omitting the entry, preserving the Success Guarantee of one entry per active block.
 
 If this is reconsidered in the future, the fallback is Java's original behaviour: drop the interlining resolution and always set `tripId` equal to `status.activeTripId`.
+
+---
+
+**Reference-trip/route lookup failures inside `buildTripReferences` degrade to a silently incomplete response — Maglev does not fail loud like Java does.**
+In Java, `TripsForRouteAction.show()` wraps `_service.getTripsForRoute(query)` and `factory.getTripDetailsResponse(trips)` in a `try` block that only catches `OutOfServiceAreaServiceException`; any other exception raised while building the response — including one from bean/reference construction — propagates uncaught, which Struts2 turns into a `500` ([`TripsForRouteAction.java#L118-123`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripsForRouteAction.java#L118-L123)). Java also never fetches reference beans independently of the entities it's already resolved into `data.list` (see Main Success Scenario and the `data.references` field above), so it has no code path where reference-building can fail without failing the whole request.
+
+Maglev's `buildTripReferences` does a separate batched DB round-trip (`GetTripsByIDs`, then `GetRoutesByIDs`, then per-route agency lookups) to hydrate trip/route/agency beans for IDs referenced via `tripId`, `schedule.previousTripId`/`nextTripId`, and `status.activeTripId` that weren't already fetched earlier in the request. If any of these queries fails, the handler logs the error and continues, returning `200 OK` with the affected bean(s) simply missing from `data.references` — even when the missing bean belongs to an entry's own `tripId`, which the Success Guarantees above otherwise claim is always resolvable.
+
+This is a deliberate, existing posture, not something introduced by any single change: commit `3dd2995e` removed a dead-code path that had `404`'d the entire response on a single interlined block's unresolved trip, on the grounds that "the trips-for-route spec guarantees 200 OK even for unknown routes and out-of-service-area conditions, with no error or 404 case defined," and that a hard failure would discard every other correctly-resolved entry in the same response over one bad lookup. This reasoning was reaffirmed during review of PR #1288, which made the reference-ID tracking in `buildTripReferences` more explicit but deliberately left this error posture untouched.
+
+Trade-offs:
+- A reference-fetch failure can produce a response where `data.list[]` cites a trip ID (via `tripId`, `schedule.previousTripId`/`nextTripId`, or `status.activeTripId`) with no corresponding bean in `data.references` — something Java's design cannot produce, since Java only ever references a bean it already holds in memory.
+- Clients that assume every referenced ID always resolves in `data.references` (rather than treating the lookup as optional) can hit a missing key. Known clients already treat this defensively: Wayfinder's `activeTripId` lookup simply skips rendering that vehicle marker on a miss, and Android's own `?:`/`mapNotNull` fallbacks plus its independent re-fetch of interlined trips over a separate network call insulate it from this exact failure mode. No client is currently known to fail hard on it.
+
+If this is reconsidered in the future, the fallback is to propagate reference-fetch errors as `500` (matching Java's fail-loud posture for unexpected errors), following the same `errors.Is(err, sql.ErrNoRows)` → `404` / other → `500` split CONTRIBUTING.md prescribes for handlers generally — which would mean reversing this handler's specific, deliberate carve-out from that rule.
 
 ---
 
@@ -249,7 +264,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list`** — Array of `tripDetails` entries, one per active block. Order is non-deterministic.
 
-**`data.references`** — Keyed collections of referenced entities: `trips`, `routes`, `agencies`, `stops`, `situations`. Populated from all entities referenced within the list entries.
+**`data.references`** — Keyed collections of referenced entities: `trips`, `routes`, `agencies`, `stops`, `situations`. Populated from all entities referenced within the list entries. In Java, an entity only ever appears in `data.list` if a bean for it already exists in memory, so every referenced ID always resolves in `data.references`. **Maglev deviates from this**: reference beans not already on hand are fetched from the database separately, and a failed fetch is logged and skipped rather than failing the response, which can leave a referenced ID (`tripId`, `schedule.previousTripId`/`nextTripId`, `status.activeTripId`) with no matching entry here — see Implementation Decisions.
 
 ---
 
@@ -302,9 +317,9 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list[].schedule.stopTimes`** — Ordered array of scheduled stop times for this trip. See `data.list[].schedule.stopTimes[]` below. In Java "this trip" is always the active trip (same as `status.activeTripId`), so `schedule` and `status` never describe two different trips. Under Maglev's interlining deviation, `schedule` (and `previousTripId`/`nextTripId` below) follow `tripId` instead of the active trip — see Implementation Decisions.
 
-**`data.list[].schedule.previousTripId`** — Combined ID of the preceding trip in this vehicle's block (i.e. the trip the same vehicle ran immediately before), if any. Present when the vehicle has a prior trip in its block for this service day.
+**`data.list[].schedule.previousTripId`** — Combined ID of the preceding trip in this vehicle's block (i.e. the trip the same vehicle ran immediately before), if any. Present when the vehicle has a prior trip in its block for this service day. The corresponding trip bean may be missing from `data.references.trips` if Maglev's reference lookup for it failed; see Implementation Decisions.
 
-**`data.list[].schedule.nextTripId`** — Combined ID of the following trip in this vehicle's block (i.e. the trip the same vehicle will run immediately after), if any.
+**`data.list[].schedule.nextTripId`** — Combined ID of the following trip in this vehicle's block (i.e. the trip the same vehicle will run immediately after), if any. Same reference-lookup-failure caveat as `previousTripId` above; see Implementation Decisions.
 
 **`data.list[].schedule.frequency`** — Frequency descriptor for headway-based service; `null` for timetable trips.
 
@@ -390,7 +405,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 }
 ```
 
-**`data.list[].status.activeTripId`** — Combined ID of the trip the vehicle is currently executing. In Java this is always equal to `tripId` — both are populated from the same active trip instance. ([`TripStatusBeanServiceImpl.java#L283-L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L283-L295)) **Maglev deviates from this**: `activeTripId` always reflects the vehicle's actual running trip, and may differ from `tripId` when the vehicle is interlining on an adjacent block trip that belongs to a different route — see Implementation Decisions.
+**`data.list[].status.activeTripId`** — Combined ID of the trip the vehicle is currently executing. In Java this is always equal to `tripId` — both are populated from the same active trip instance. ([`TripStatusBeanServiceImpl.java#L283-L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L283-L295)) **Maglev deviates from this**: `activeTripId` always reflects the vehicle's actual running trip, and may differ from `tripId` when the vehicle is interlining on an adjacent block trip that belongs to a different route — see Implementation Decisions. Its trip bean may also be missing from `data.references.trips` if Maglev's reference lookup for it failed — see Implementation Decisions.
 
 **`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within the vehicle's block configuration. Useful for comparing against the same field in arrival-and-departure responses.
 
