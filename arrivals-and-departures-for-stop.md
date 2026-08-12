@@ -129,6 +129,40 @@ The method reads `return this.predictedArrivalTime > 0` instead of `return this.
 
 This does not affect REST API serialisation (the `predictedDepartureTime` field is written directly to JSON and not gated on this method). It would affect Java clients that call `computeBestDepartureTime()` on the response bean: when a vehicle has a predicted departure but no predicted arrival, `computeBestDepartureTime()` would incorrectly fall back to the scheduled departure time.
 
+## Implementation Decisions
+
+**Situation IDs use idempotent agency-prefixing, not Java's unconditional prefixing.**
+
+In Java, `GtfsRealtimeSource.handleAlerts` prefixes every alert ID unconditionally by calling `createId(entity.getId())`, which always returns `new AgencyAndId(_agencyIds.get(0), id)` without inspecting the raw ID first. [Source: [`GtfsRealtimeSource.java#L1064-L1065`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1064-L1065), [`#L1176-L1177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1176-L1177)]
+
+Maglev's `situationID()` (`internal/restapi/reference_utils.go`) instead skips prefixing when the raw alert ID already starts with `"{agencyID}_"`. This is deliberate (PR #1313): some GTFS-RT feeds — Puget Sound among them — already export alert IDs in prefixed form (`1_92239`); prefixing unconditionally would double-prefix them to `1_1_92239`, which resolves against nothing any client has seen from upstream OBA for that alert.
+
+Known edge case: a raw alert ID that happens to be shaped like `{agencyID}_{x}` for reasons unrelated to Maglev's prefixing is left unprefixed when it should have been prefixed.
+
+If this is reconsidered in the future, the fallback is Java's unconditional prefixing — accepting the double-prefix regression on feeds that already export prefixed IDs.
+
+---
+
+**Situation ID's agency prefix is chosen from the alert's own informed entity, not the feed's first configured agency.**
+
+In Java, `createId` always prefixes an alert ID using the feed's first configured agency — `_agencyIds.get(0)` — regardless of which agency the alert's own `informed_entity` list names. [Source: [`GtfsRealtimeSource.java#L1176-L1177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1176-L1177)]
+
+Maglev's `agencyIDForAlert()` (`internal/restapi/reference_utils.go`) instead prefers the alert's own `InformedEntities[].AgencyID` over whichever agency the caller's lookup path resolved (PR #1313). This avoids a problem Java's approach doesn't guard against: the same alert can be reached two different ways within a single response — e.g. via a route belonging to agency A and a stop belonging to agency B — and scoping the ID to whichever lookup path found it first would publish that alert under two different `situationId` values in the same response.
+
+This is invisible on any GTFS-RT feed configured with a single `agency-ids` entry, since the alert's own informed-entity agency and the feed's first configured agency are then the same value — the only configuration verified live for PR #1313. On a `gtfs-rt-feeds` entry configured with multiple `agency-ids`, an alert whose `informed_entity.agency_id` differs from that feed's first configured agency gets a different ID prefix than Java produces for the same alert.
+
+If this is reconsidered in the future, the fallback is Java's behaviour — always prefix using the feed's first configured agency — which reintroduces the two-IDs-for-one-alert problem on cross-agency lookups that this deviation exists to avoid.
+
+---
+
+**`data.entry.situationIds` is always emitted as `[]`, never omitted, though the field description above calls for omitting it when there are no alerts.**
+
+`models.ArrivalsAndDeparturesEntry.SituationIDs` (`internal/models/arrival_and_departure.go`) lacks `omitempty` and is always assigned a non-nil (possibly empty) slice, so Maglev always emits `situationIds: []` at the top level rather than omitting the key when no alerts apply. This predates PR #1313 — it is not something that PR introduced — but PR #1313's changes sit directly in this code path.
+
+This is not simply an oversight to correct casually: iOS's Swift models decode `situationIds` as a **required** (non-optional) field — `try container.decode([String].self, ...)` — on this endpoint as well as `trip-for-vehicle`, `trip-details`, and `arrival-and-departure-for-stop`. If Maglev started omitting the key to match the spec, decoding would throw on iOS for the ordinary no-alerts case, breaking decoding for those clients. Maglev's current spec-deviating behaviour is load-bearing, not incidental.
+
+If this is reconsidered in the future, it needs to be coordinated with an iOS-side change to decode `situationIds` as optional (`decodeIfPresent`) first — changing Maglev's output before that lands would break the iOS app.
+
 ## Open Questions
 
 None. All behaviours were determinable from the source code and confirmed against the live server.
@@ -259,7 +293,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`data.entry.nearbyStopIds[]`** — Combined IDs of other stops within 100 metres of the queried stop (excluding the queried stop itself). Full stop objects for each ID appear in `references.stops`.
 
-**`data.entry.situationIds[]`** — IDs of service alerts that affect this stop or any route serving it. Full alert objects appear in `references.situations`. Omitted when there are no applicable alerts.
+**`data.entry.situationIds[]`** — IDs of service alerts that affect this stop or any route serving it. Full alert objects appear in `references.situations`. Omitted when there are no applicable alerts — **Maglev deviates from this and always emits `[]`**, and its ID prefixing also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -368,7 +402,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`actualTrack`** — Track or platform number from real-time data, when applicable. Empty string otherwise.
 
-**`situationIds[]`** — IDs of service alerts that specifically affect this arrival/departure (e.g. an alert scoped to this route/stop/trip combination). Full alert objects in `references.situations`.
+**`situationIds[]`** — IDs of service alerts that specifically affect this arrival/departure (e.g. an alert scoped to this route/stop/trip combination). Full alert objects in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 **`tripStatus`** — Real-time or schedule-projected status of the vehicle executing this trip. Present whenever block location information is available; absent otherwise. See below for structure. When the vehicle is in the middle of a block and has not yet started the trip that will call at this stop, `tripStatus.activeTripId` will name the vehicle's current trip while the parent entry's `tripId` names the future trip.
 
@@ -457,7 +491,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`tripStatus.vehicleFeatures[]`** — List of feature strings describing vehicle capabilities (e.g. accessibility features).
 
-**`tripStatus.situationIds[]`** — IDs of service alerts affecting this vehicle/trip. Full alert objects in `references.situations`.
+**`tripStatus.situationIds[]`** — IDs of service alerts affecting this vehicle/trip. Full alert objects in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 

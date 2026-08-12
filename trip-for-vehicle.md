@@ -77,7 +77,7 @@ An HTTP GET to `/api/where/trip-for-vehicle/{id}.json` (or `.xml`).
   A `frequency` object is included in both `data.entry` and `data.entry.status` (if present), describing the headway and the time window during which the frequency applies.
 
 **5a. No service alerts apply:**
-  `data.entry.situationIds` is absent from the response (not an empty array).
+  `data.entry.situationIds` is absent from the response (not an empty array). **Maglev deviates from this** — see [Implementation Decisions](#implementation-decisions).
 
 **5b. Vehicle is executing a trip on a different route than the block was originally selected for (interlining):**
   The entry's `tripId` and `status.activeTripId` always reflect the trip the vehicle is currently executing — they may belong to a route different from any route that caused this vehicle to appear in a prior query. This is expected behaviour: a single block can contain trips across multiple routes.
@@ -113,6 +113,40 @@ The `@RequiredFieldValidator` annotation on `TripForVehicleAction.setId` is dead
 The legacy Java implementation omitted `status.lastUpdateTime` and `status.lastLocationUpdateTime` from the response when no real-time data had been received for the vehicle. Maglev emits `0` for both fields in that case.
 
 The fields are carried on the shared `TripStatus` struct, which is reused across multiple endpoints. Adding per-endpoint omission logic to a shared struct would require either endpoint-specific wrapper types or a custom marshaler — complexity that is not warranted given that `0` is an unambiguous sentinel and no known client treats absence and `0` differently for these fields.
+
+---
+
+**Situation IDs use idempotent agency-prefixing, not Java's unconditional prefixing.**
+
+In Java, `GtfsRealtimeSource.handleAlerts` prefixes every alert ID unconditionally by calling `createId(entity.getId())`, which always returns `new AgencyAndId(_agencyIds.get(0), id)` without inspecting the raw ID first. [Source: [`GtfsRealtimeSource.java#L1064-L1065`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1064-L1065), [`#L1176-L1177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1176-L1177)]
+
+Maglev's `situationID()` (`internal/restapi/reference_utils.go`) instead skips prefixing when the raw alert ID already starts with `"{agencyID}_"`. This is deliberate (PR #1313): some GTFS-RT feeds — Puget Sound among them — already export alert IDs in prefixed form (`1_92239`); prefixing unconditionally would double-prefix them to `1_1_92239`, which resolves against nothing any client has seen from upstream OBA for that alert.
+
+Known edge case: a raw alert ID that happens to be shaped like `{agencyID}_{x}` for reasons unrelated to Maglev's prefixing is left unprefixed when it should have been prefixed.
+
+If this is reconsidered in the future, the fallback is Java's unconditional prefixing — accepting the double-prefix regression on feeds that already export prefixed IDs.
+
+---
+
+**Situation ID's agency prefix is chosen from the alert's own informed entity, not the feed's first configured agency.**
+
+In Java, `createId` always prefixes an alert ID using the feed's first configured agency — `_agencyIds.get(0)` — regardless of which agency the alert's own `informed_entity` list names. [Source: [`GtfsRealtimeSource.java#L1176-L1177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1176-L1177)]
+
+Maglev's `agencyIDForAlert()` (`internal/restapi/reference_utils.go`) instead prefers the alert's own `InformedEntities[].AgencyID` over whichever agency the caller's lookup path resolved (PR #1313). This avoids a problem Java's approach doesn't guard against: the same alert can be reached two different ways within a single response — e.g. via a route belonging to agency A and a stop belonging to agency B — and scoping the ID to whichever lookup path found it first would publish that alert under two different `situationId` values in the same response.
+
+This is invisible on any GTFS-RT feed configured with a single `agency-ids` entry, since the alert's own informed-entity agency and the feed's first configured agency are then the same value — the only configuration verified live for PR #1313. On a `gtfs-rt-feeds` entry configured with multiple `agency-ids`, an alert whose `informed_entity.agency_id` differs from that feed's first configured agency gets a different ID prefix than Java produces for the same alert.
+
+If this is reconsidered in the future, the fallback is Java's behaviour — always prefix using the feed's first configured agency — which reintroduces the two-IDs-for-one-alert problem on cross-agency lookups that this deviation exists to avoid.
+
+---
+
+**`situationIds` is always emitted as `[]` (or omitted only via the struct default), never explicitly omitted when there are no alerts, though the spec above calls for omitting it.**
+
+The Extensions and Response Structure sections on this page state that `data.entry.situationIds` and `data.entry.status.situationIds` are absent, not an empty array, when no alerts apply. This is Java's actual behaviour; Maglev does not replicate it. `models.TripDetails.SituationIDs` and `models.TripStatus.SituationIDs` (`internal/models/trip_details.go`) both lack `omitempty` and are always assigned a non-nil (possibly empty) slice, so Maglev always emits `situationIds: []` rather than omitting the key. This predates PR #1313 — it is not something that PR introduced — but PR #1313's changes sit directly in this code path.
+
+This is not simply an oversight to correct casually: iOS's Swift models decode `situationIds` as a **required** (non-optional) field — `try container.decode([String].self, ...)` — on `trip-for-vehicle`, `trip-details`, `arrival-and-departure-for-stop`, and `arrivals-and-departures-for-stop`. If Maglev started omitting the key to match the spec, decoding would throw on iOS for the ordinary no-alerts case, breaking all four endpoints for iOS clients. Maglev's current spec-deviating behaviour is load-bearing, not incidental.
+
+If this is reconsidered in the future, it needs to be coordinated with an iOS-side change to decode `situationIds` as optional (`decodeIfPresent`) first — changing Maglev's output before that lands would break the iOS app.
 
 ---
 
@@ -238,7 +272,7 @@ The fields are carried on the shared `TripStatus` struct, which is reused across
 
 **`data.entry.schedule`** — Stop-time schedule for the active trip. Present only when `includeSchedule=true`; see `data.entry.schedule` below.
 
-**`data.entry.situationIds`** — Array of combined service-alert IDs that currently apply to this vehicle journey. Absent (not an empty array) when no alerts apply. The corresponding alert objects are in `data.references.situations`.
+**`data.entry.situationIds`** — Array of combined service-alert IDs that currently apply to this vehicle journey. Absent (not an empty array) when no alerts apply — **Maglev deviates from this and always emits `[]`**, see [Implementation Decisions](#implementation-decisions). The corresponding alert objects are in `data.references.situations`; the ID prefixing used here also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ### data.entry.status
 
@@ -344,7 +378,7 @@ The fields are carried on the shared `TripStatus` struct, which is reused across
 
 **`data.entry.status.vehicleFeatures`** — List of feature identifiers reported for this vehicle (e.g., accessibility features). Absent when the real-time source supplies none.
 
-**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to this vehicle journey at the requested time. Absent when none apply.
+**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to this vehicle journey at the requested time. Absent when none apply — **Maglev deviates from this and always emits `[]`**, and its ID prefixing also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ### data.entry.schedule
 

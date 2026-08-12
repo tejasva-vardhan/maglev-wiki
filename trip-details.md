@@ -162,6 +162,30 @@ The fields are carried on the shared `TripStatus` struct, which is reused across
 
 ---
 
+**Situation IDs use idempotent agency-prefixing, not Java's unconditional prefixing.**
+
+In Java, `GtfsRealtimeSource.handleAlerts` prefixes every alert ID unconditionally by calling `createId(entity.getId())`, which always returns `new AgencyAndId(_agencyIds.get(0), id)` without inspecting the raw ID first. [Source: [`GtfsRealtimeSource.java#L1064-L1065`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1064-L1065), [`#L1176-L1177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1176-L1177)]
+
+Maglev's `situationID()` (`internal/restapi/reference_utils.go`) instead skips prefixing when the raw alert ID already starts with `"{agencyID}_"`. This is deliberate (PR #1313): some GTFS-RT feeds — Puget Sound among them — already export alert IDs in prefixed form (`1_92239`); prefixing unconditionally would double-prefix them to `1_1_92239`, which resolves against nothing any client has seen from upstream OBA for that alert.
+
+Known edge case: a raw alert ID that happens to be shaped like `{agencyID}_{x}` for reasons unrelated to Maglev's prefixing is left unprefixed when it should have been prefixed.
+
+If this is reconsidered in the future, the fallback is Java's unconditional prefixing — accepting the double-prefix regression on feeds that already export prefixed IDs.
+
+---
+
+**Situation ID's agency prefix is chosen from the alert's own informed entity, not the feed's first configured agency.**
+
+In Java, `createId` always prefixes an alert ID using the feed's first configured agency — `_agencyIds.get(0)` — regardless of which agency the alert's own `informed_entity` list names. [Source: [`GtfsRealtimeSource.java#L1176-L1177`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/realtime/gtfs_realtime/GtfsRealtimeSource.java#L1176-L1177)]
+
+Maglev's `agencyIDForAlert()` (`internal/restapi/reference_utils.go`) instead prefers the alert's own `InformedEntities[].AgencyID` over whichever agency the caller's lookup path resolved (PR #1313). This avoids a problem Java's approach doesn't guard against: the same alert can be reached two different ways within a single response — e.g. via a route belonging to agency A and a stop belonging to agency B — and scoping the ID to whichever lookup path found it first would publish that alert under two different `situationId` values in the same response.
+
+This is invisible on any GTFS-RT feed configured with a single `agency-ids` entry, since the alert's own informed-entity agency and the feed's first configured agency are then the same value — the only configuration verified live for PR #1313. On a `gtfs-rt-feeds` entry configured with multiple `agency-ids`, an alert whose `informed_entity.agency_id` differs from that feed's first configured agency gets a different ID prefix than Java produces for the same alert.
+
+If this is reconsidered in the future, the fallback is Java's behaviour — always prefix using the feed's first configured agency — which reintroduces the two-IDs-for-one-alert problem on cross-agency lookups that this deviation exists to avoid.
+
+---
+
 ## Open Questions
 
 None. All observable behaviours were resolved through static analysis and live server testing.
@@ -296,7 +320,7 @@ None. All observable behaviours were resolved through static analysis and live s
 
 **`data.entry.status`** — The vehicle's current real-time or schedule-derived status. Absent when `includeStatus=false` or when no tracking record exists for the block.
 
-**`data.entry.situationIds`** — Combined IDs of service alerts currently applicable to this trip. Full alert records are in `references.situations`. May be an empty array.
+**`data.entry.situationIds`** — Combined IDs of service alerts currently applicable to this trip. Full alert records are in `references.situations`. May be an empty array. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -470,7 +494,7 @@ None. All observable behaviours were resolved through static analysis and live s
 
 **`data.entry.status.vehicleFeatures`** — List of feature strings describing the vehicle (agency-defined; may be empty).
 
-**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to the vehicle's current journey. Full records are in `references.situations`.
+**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to the vehicle's current journey. Full records are in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
