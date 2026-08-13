@@ -812,6 +812,7 @@ beyond "revisit when that ships."
 | `stops-for-location` stop-code (`query`) search, matched stop has no routes | Returned regardless — routes are loaded with no routes-empty filter in the stop-code path | Dropped — `agency == nil` in the results loop, since no `stop_times` row means no resolvable agency | [[stops-for-location]] § Implementation Decisions |
 | `search-stop`, parent station reached through children under different agencies | One stable ID and one `references.stops` entry per physical station, fixed at ingest | One `references.stops` entry per (parent station, resolving agency) pair actually referenced | [[search-stop]] § Implementation Decisions |
 | Agency prefix on a stop's combined ID (location/search endpoints) | Fixed at build time, stable per stop | Whichever agency `GetAgenciesForStops` happens to return first (no `ORDER BY`); non-deterministic across requests for a stop served by more than one agency's routes | §2.1–§2.2 above |
+| Stop reference ID for `trips-for-location`'s schedule/status stops | Fixed at build time, stable per stop | Whichever response entry names the stop first (PR #1314); non-deterministic across requests for a stop referenced by trips from more than one agency | [[trips-for-location]] § Implementation Decisions |
 
 Rows should be added here whenever a new instance of this same root cause
 is found, even if its own endpoint page also documents it — this table

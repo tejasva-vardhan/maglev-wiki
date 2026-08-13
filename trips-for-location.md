@@ -144,6 +144,18 @@ This is invisible on any GTFS-RT feed configured with a single `agency-ids` entr
 
 If this is reconsidered in the future, the fallback is Java's behaviour — always prefix using the feed's first configured agency — which reintroduces the two-IDs-for-one-alert problem on cross-agency lookups that this deviation exists to avoid.
 
+---
+
+**Stop reference ID is chosen from the referring entry, not a fixed per-stop agency (deviates from legacy; single-feed-limitation deviation — see [Multi-Agency-Static-Feeds-Stop-Consolidation.md §10](Multi-Agency-Static-Feeds-Stop-Consolidation.md#10-deviations-from-legacy-due-to-the-single-feed-limitation)).**
+
+In Java, a stop maps to exactly one `StopEntry`/`AgencyAndId`, assigned once at GTFS-load time to the feed's owning agency (`StopBeanServiceImpl.getStopForIdForServiceDate`, `StopEntryImpl._id`) — every reference to that stop, in every response, uses that same fixed ID. Maglev's `stops` table has no `agency_id` column (§2.1 of the multi-agency spec); before PR #1314, `trips-for-location` derived a stop reference's agency from whichever route happened to come back first from `GetRouteIDsForStops` — arbitrary, but stable across requests for a fixed DB snapshot. PR #1314 (`createStop`, `trips_for_location_handler.go`) changed this to prefer whichever response entry actually names the stop first, via `schedule.stopTimes[].stopId` or `status.closestStop`/`nextStop`.
+
+This isn't a new, one-off mechanism: it's the same convention `trips-for-route` already established (`stopReferenceList`, `StopIDMap`, PR #1313) — prefer the ID the referring entry itself used, rather than deriving one independently per stop. For a stop served by only one agency's trips — the overwhelming majority — this is a strict improvement over the old per-stop derivation: it now always resolves, where before it often didn't. For a stop served by trips from more than one agency, the winning ID depends on response order rather than DB row order, so the same physical stop can resolve to different combined IDs across different requests.
+
+This convention currently only covers "reference-block" endpoints (`trips-for-location`, `trips-for-route`); primary-listing endpoints like `stops-for-location` and `search-stop` have no referring entity to borrow an ID from and still resolve a stop's own ID via the unrelated, genuinely-unordered `GetAgenciesForStops` mechanism (§10 row 3 of the multi-agency spec). Full consistency across both families is what §9 of that spec (namespaced storage) would deliver — a stop's ID fixed at import time, the same way legacy's `AgencyAndId` is.
+
+No client currently consumes `trips-for-location` (confirmed against Wayfinder, iOS, and Android during this PR's review), so this has no live impact today. The durable fix, if this becomes load-bearing before §9 lands, is the same one already tracked for this whole class of problem: §9's namespaced-storage proposal.
+
 ## Open Questions
 
 None.
@@ -453,7 +465,7 @@ None.
 
 **`data.references.routes`** — Route beans for all routes whose trips appear in the response.
 
-**`data.references.stops`** — Stop beans for all stops referenced by the response (closest stop and next stop from status objects; all stops in schedule stop-time arrays). Each bean's `direction` field is taken from the feed when defined, otherwise inferred from shape geometry — see [[Stop-Direction-Calculation]].
+**`data.references.stops`** — Stop beans for all stops referenced by the response (closest stop and next stop from status objects; all stops in schedule stop-time arrays). Each bean's `direction` field is taken from the feed when defined, otherwise inferred from shape geometry — see [[Stop-Direction-Calculation]]. Each stop's `id` is stamped with the agency of whichever entry referred to it first in this response, not a fixed per-stop agency — see [Implementation Decisions](#implementation-decisions).
 
 **`data.references.trips`** — Trip beans for all trips referenced in list entries. Populated only when `includeTrip=true` (the default).
 
