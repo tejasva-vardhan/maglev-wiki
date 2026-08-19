@@ -1,5 +1,3 @@
-# Metrics Endpoint (`metrics.json`)
-
 Bring Maglev's `GET /api/where/metrics.json` to field-name parity with
 OneBusAway Java's undocumented-but-widely-used monitoring endpoint, so
 existing watchdog/alerting tooling built against the Java response shape
