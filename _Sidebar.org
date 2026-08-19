@@ -6,6 +6,7 @@
 * Feature Specs
 - [[Multi-Agency-Static-Feeds-Stop-Consolidation][Multi-Agency Static Feeds and Stop Consolidation]]
 - [[PostgreSQL-Support][PostgreSQL Support]]
+- [[Metrics-Endpoint][Metrics Endpoint (metrics.json)]]
 
 * OBA API Specs
 - [[OBA-API-Specs][API Spec Index]]
