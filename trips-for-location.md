@@ -45,7 +45,7 @@ A GET request to `/api/where/trips-for-location.json` (or `.xml`).
 
 1. Rider's app sends a GET request specifying a centre coordinate (`lat`/`lon`) and a search area (`radius`, or both `latSpan` and `lonSpan`), along with an optional `time`, `includeTrip`, `includeStatus`, and `includeSchedule`.
 
-2. The server resolves the query time: the `time` parameter if supplied, otherwise the current server clock.
+2. The server resolves the query time: the `time` parameter if supplied, otherwise the current server clock. In Java, the resulting calendar day is computed using the server JVM's own default timezone — a single process-wide setting, not one resolved per agency. Maglev instead resolves it against the queried agency's own timezone — see [Implementation Decisions](#implementation-decisions).
 
 3. The server constructs a bounding box from the centre and the supplied bounds parameters:
    - If `radius` is given, the box encloses a circle of that radius around the centre. Maximum enforced radius is 20,000 m; see Suspected Defects for the broken clamping behaviour. ([`TripsForLocationAction.java#L46`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripsForLocationAction.java#L46), [`SearchBoundsFactory.java#L73–L96`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/impl/SearchBoundsFactory.java#L73-L96))
@@ -168,6 +168,14 @@ This is pre-existing architecture (the real-time-vehicle-driven trip source pred
 
 If this is reconsidered, the fix is to mirror `trips-for-route`: resolve candidates via a scheduled-time-range search over blocks rather than filtering live vehicle positions directly, so that selection and service-date resolution share the same window by construction, the way they now do on the route side. Widening the resolver's window alone would not close the gap — the underlying selection mechanism has no window to widen.
 
+---
+
+**Current-time fallback timezone is the queried agency's IANA zone, not the server JVM's default timezone (deviates from legacy; see [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions) for the full write-up).**
+
+Java resolves an absent or explicit `time` parameter's calendar day using the server JVM's own default timezone (`ServiceDate(Date)`'s `Calendar.getInstance()`, reached via `AgencyServiceInterval`) — a single process-wide setting shared across every agency the server hosts, never re-resolved per query or per agency.
+
+`trips-for-location`'s own time resolution (`internal/restapi/trips_for_location_handler.go`, `currentLocation := agencyLocations[agencies[0].ID]`) already resolves against the queried agency's timezone instead of the JVM default — this predates PR #1352, which brought `stops-for-location`'s equivalent fallback in line with the same approach. As on that page, this is a deliberate improvement (self-correcting regardless of the server process's own configured timezone) rather than a port of Java's literal mechanism, and it shares the same single-feed-limitation trade-off: "the queried agency" is `agencies[0]`, correct only because exactly one agency is ever loaded today — see [Multi-Agency-Static-Feeds-Stop-Consolidation.md §10](Multi-Agency-Static-Feeds-Stop-Consolidation.md#10-deviations-from-legacy-due-to-the-single-feed-limitation).
+
 ## Open Questions
 
 None.
@@ -206,7 +214,7 @@ None.
 
 **`lonSpan`** — Total width of the search bounding box in degrees of longitude. Must be used with `latSpan`.
 
-**`time`** — The point in time for which to query vehicle positions. Accepts a Unix millisecond timestamp (plain integer) or a `yyyy-MM-dd_HH-mm-ss` string. If omitted, the current server time is used.
+**`time`** — The point in time for which to query vehicle positions. Accepts a Unix millisecond timestamp (plain integer) or a `yyyy-MM-dd_HH-mm-ss` string. If omitted, the current server time is used. In legacy, the resulting calendar day is computed in the server JVM's own default timezone; Maglev resolves it against the queried agency's timezone instead — see [Implementation Decisions](#implementation-decisions).
 
 **`maxCount`** — Nominally a cap on the number of results. Currently accepted and stored but never applied; all matching trips are returned and `limitExceeded` is always `false`.
 
