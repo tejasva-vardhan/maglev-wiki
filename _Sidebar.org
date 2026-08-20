@@ -37,6 +37,8 @@
 - [[trip-for-vehicle][Trip for Vehicle]]
 ** Vehicles
 - [[vehicles-for-agency][Vehicles for Agency]]
+** Service Alerts
+- [[situation][Situation]]
 ** Search
 - [[search-route][Search Route]]
 - [[search-stop][Search Stop]]

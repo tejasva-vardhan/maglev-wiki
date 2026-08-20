@@ -56,6 +56,7 @@ The following endpoints already have an Implementation Decisions entry stating M
 - [[route-ids-for-agency]] — unknown agency ID → HTTP 404
 - [[schedule-for-stop]] — unknown stop ID → HTTP 404
 - [[arrival-and-departure-for-stop]] — unknown stop ID or trip ID → HTTP 404
+- [[situation]] — unknown situation ID → HTTP 404; malformed situation ID → HTTP 400
 
 **Endpoints with no Maglev decision yet:**
 
