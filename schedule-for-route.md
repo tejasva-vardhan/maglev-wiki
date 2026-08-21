@@ -52,8 +52,8 @@ A GET request arrives at `/api/where/schedule-for-route/{id}.json` (or `.xml`).
    - Collects the trip's headsign (from narrative data; falls back to the name of the last stop if no headsign is recorded).
    - Accumulates the trip's stop sequence for later merging.
    - Collects all per-stop scheduled times.
-6. If no trips are active on the requested date and no service for this route is scheduled on any future date, the system returns a service-date-out-of-range response (see Extension 3b).
-7. If no trips are active on the requested date, the system returns a no-service-that-day response (see Extension 3c).
+6. If no trips are active on the requested date and no service for this route is scheduled on any future effective service date, the legacy Java implementation returns a service-date-out-of-range response (see Extension 3b). Maglev intentionally uses a planned service-span rule instead; see [Implementation Decisions](#implementation-decisions).
+7. If no trips are active on the requested date but a future effective service date exists, the legacy Java implementation returns a no-service-that-day response (see Extension 3c). Maglev intentionally uses a planned service-span rule instead; see [Implementation Decisions](#implementation-decisions).
 8. For each direction group the system derives a canonical stop order using a topological sort across all collected stop sequences for that direction. This heuristic works well for simple linear routes but may produce an imperfect ordering for loops or routes with complex branching. ([`RouteScheduleBeanServiceImpl.java#L411-L436`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L411-L436))
 9. Trip IDs within each direction group are sorted in ascending order by their combined ID string. ([`BeanFactoryV2.java#L977`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L977))
 10. Stop times within each direction group are sorted by trip ID, then by arrival time within each trip, and then assembled into per-trip `tripsWithStopTimes` entries. ([`BeanFactoryV2.java#L961-L983`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L961-L983))
@@ -66,13 +66,17 @@ A GET request arrives at `/api/where/schedule-for-route/{id}.json` (or `.xml`).
 
 At step 3, if the route collection ID is not present in the transit graph, the system returns HTTP 404 with `code: 404` and no data body.
 
-**3b. Date is after all service has ended**
+**3b. Date is outside the route's service span / no later effective service**
 
-After step 5, if no block trips have any scheduled service on the requested date *and* no service is scheduled for any later date, the system returns HTTP 200 with `code: 510`, `text: "ServiceDateOutOfRange"`, and no data body. This occurs when querying a date that falls entirely after the route's service window has closed. ([`RouteScheduleBeanServiceImpl.java#L204-L208`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L204-L208), [`ScheduleForRouteAction.java#L86-L89`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L86-L89))
+After step 5, the legacy Java implementation checks whether any effective service date exists after the requested date. If no block trips have any scheduled service on the requested date *and* no later effective service date exists, it returns HTTP 200 with `code: 510`, `text: "ServiceDateOutOfRange"`, and no data body. This primarily occurs when querying a date after the route's service window has closed, but the future-effective-date rule can also classify a date inside a planned service span as out of range if every later date has been removed by exceptions. ([`RouteScheduleBeanServiceImpl.java#L204-L208`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L204-L208), [`RouteScheduleBeanServiceImpl.java#L233-L241`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L233-L241), [`ExtendedCalendarServiceImpl.java#L139-L164`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/ExtendedCalendarServiceImpl.java#L139-L164), [`ScheduleForRouteAction.java#L86-L89`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L86-L89))
 
-**3c. No trips run on the requested date (but future service exists)**
+Maglev intentionally differs for this distinction: `ServiceDateOutOfRange` means the requested date is outside the route's planned service span, either before the first planned service date or after the last planned service date. See [Implementation Decisions](#implementation-decisions).
 
-After step 5, if no trips are active on the requested date but the route does have service scheduled on later dates (including the case where the requested date pre-dates the route's first service day), the system returns HTTP 200 with `code: 510`, `text: "NoServiceThatDay"`, and a partial data body. The entry includes the route ID, the schedule date, and empty `serviceIds` and `stopTripGroupings` arrays. The references block contains the agency and route objects but no stops, trips, or stop times. ([`ScheduleForRouteAction.java#L90-L92`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L90-L92))
+**3c. No trips run on the requested date**
+
+After step 5, if no trips are active on the requested date but a later effective service date exists, the legacy Java implementation returns HTTP 200 with `code: 510`, `text: "NoServiceThatDay"`, and a partial data body. Under this legacy rule, a date before the route's first service day is also classified as `NoServiceThatDay` when later service exists. The entry includes the route ID, the schedule date, and empty `serviceIds` and `stopTripGroupings` arrays. The references block contains the agency and route objects but no stops, trips, or stop times. ([`ScheduleForRouteAction.java#L90-L92`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/ScheduleForRouteAction.java#L90-L92))
+
+Maglev intentionally differs for this distinction: `NoServiceThatDay` means the requested date is inside the route's planned service span, but no trips operate on that date after applying calendar exceptions. See [Implementation Decisions](#implementation-decisions).
 
 **4a. `date` parameter cannot be parsed**
 
@@ -81,6 +85,12 @@ If the `date` value is not a valid `YYYY-MM-DD` string and not a pure decimal in
 ## Suspected Defects
 
 ### Defects that affect the use case
+
+**The empty-schedule reason uses an asymmetric future-effective-service rule.**
+
+[`RouteScheduleBeanServiceImpl.java#L204-L208`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L204-L208), [`RouteScheduleBeanServiceImpl.java#L233-L241`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L233-L241), [`ExtendedCalendarServiceImpl.java#L139-L164`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/ExtendedCalendarServiceImpl.java#L139-L164)
+
+Legacy Java distinguishes `NoServiceThatDay` from `ServiceDateOutOfRange` by asking whether any effective service date exists after the requested date. That makes the rule asymmetric: a date before the route starts can be reported as `NoServiceThatDay`, while a date inside the planned service span can be reported as `ServiceDateOutOfRange` if every later planned date is removed by `calendar_dates.exception_type = 2`. The intended rider-facing distinction is simpler: `ServiceDateOutOfRange` means the requested date is outside the route's planned service span, while `NoServiceThatDay` means the date is in span but no trips operate that day. Maglev's intended contract corrects this; see [Implementation Decisions](#implementation-decisions).
 
 **Both 510 responses return HTTP 200 instead of HTTP 510.**
 
@@ -127,6 +137,18 @@ The legacy Java implementation returns `code: 510` in the response body for both
 **Extension 3b — `ServiceDateOutOfRange` includes a partial data body (DC-3)**
 
 The legacy Java implementation returns `data: null` for `ServiceDateOutOfRange` while returning a partial data body (route ID, schedule date, empty arrays, agency+route references) for `NoServiceThatDay`. Since DC-2 reclassifies both as successful responses with an empty schedule, Maglev returns the same partial data body for both cases. This makes the two responses structurally consistent — the only difference is the `text` label — and gives clients useful context (route metadata) even when no trips run. For iOS specifically, this eliminates a `DecodingError` that occurred when `data` was null, allowing the app to display an empty schedule instead of a generic error.
+
+**Extensions 3b/3c — empty-schedule reason uses planned service-span semantics (SD-01)**
+
+Legacy Java distinguishes `NoServiceThatDay` from `ServiceDateOutOfRange` by asking whether any effective service date exists after the requested service date. That makes the rule asymmetric: dates before a route starts can be reported as `NoServiceThatDay`, while dates inside a planned service span can be reported as `ServiceDateOutOfRange` if every later date is removed by `calendar_dates.exception_type = 2`.
+
+Maglev's intended contract instead uses planned service-span semantics. `ServiceDateOutOfRange` means the requested date is outside the route's known planned service span, either before the first planned service date or after the last planned service date. `NoServiceThatDay` means the requested date is inside that span, but no trips operate on that date after applying calendar exceptions.
+
+This treats the service span symmetrically and reflects the product distinction a rider sees: outside the route's schedule era versus an in-scope date with no scheduled trips. Removal exceptions can represent holidays, staffing cancellations, or other date-specific removals, and do not by themselves mean the route is outside its planned service span.
+
+Client impact is expected to be low: the response shape is unchanged, and the affected value is the wrapper `text` for empty-schedule edge cases. Static review of Wayfinder, the JS SDK, iOS, and Android found no client dependency on the exact `NoServiceThatDay` vs `ServiceDateOutOfRange` labels for this endpoint.
+
+Implementation note: this entry defines the intended Maglev contract. Any Maglev code path that still follows the legacy future-effective-service rule for before-start dates or all-later-dates-removed cases should be treated as needing follow-up implementation/test coverage.
 
 ## Open Questions
 
@@ -187,13 +209,13 @@ None.
 
 **`version`** — API version number (always `2` for this endpoint).
 
-**`code`** — Response status: `200` on success, `404` if the route is not found, `510` if no service is available for the requested date.
+**`code`** — Response status. Legacy Java uses `200` on success, `404` if the route is not found, and body `code: 510` for the two empty-schedule responses. Maglev intentionally uses body `code: 200` for both empty-schedule responses and carries the reason in `text`; see [Implementation Decisions](#implementation-decisions).
 
-**`text`** — Human-readable status: `"OK"`, `"resource not found"`, `"ServiceDateOutOfRange"`, or `"NoServiceThatDay"`.
+**`text`** — Human-readable status: `"OK"`, `"resource not found"`, `"ServiceDateOutOfRange"`, or `"NoServiceThatDay"`. For Maglev, `ServiceDateOutOfRange` means the requested date is outside the route's planned service span, while `NoServiceThatDay` means the date is inside that span but no trips operate; see [Implementation Decisions](#implementation-decisions).
 
 **`currentTime`** — Server wall-clock time at the moment the response was generated, in Unix milliseconds.
 
-**`data`** — Present on `200` responses and on `510 NoServiceThatDay` responses. Absent (null) on `404` and `510 ServiceDateOutOfRange` responses.
+**`data`** — Present on successful schedule responses. Legacy Java also includes a partial data body on `510 NoServiceThatDay` but returns null for `510 ServiceDateOutOfRange`. Maglev intentionally includes the same partial empty-schedule body for both empty-schedule reasons; see [Implementation Decisions](#implementation-decisions).
 
 ---
 

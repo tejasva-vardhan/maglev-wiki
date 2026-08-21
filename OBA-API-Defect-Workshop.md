@@ -104,6 +104,26 @@ Clients targeting both implementations must detect "no service" conditions via t
 
 ---
 
+## DC-2a: Empty-schedule reason uses an asymmetric future-effective-service rule
+
+[[schedule-for-route]] distinguishes two empty-schedule labels: `ServiceDateOutOfRange` and `NoServiceThatDay`. The useful rider-facing distinction is whether the requested date is outside the route's planned service span, or whether the date is in span but no trips operate. Legacy Java instead asks whether any effective service date exists after the requested date.
+
+**Root cause:** `RouteScheduleBeanServiceImpl` checks future service with `willServiceIdsBeActiveAfterServiceDate`, which iterates effective dates from `ExtendedCalendarServiceImpl#getDatesForServiceIds`. Those effective dates already apply calendar exceptions, so the rule is not based on the route's planned service span. This creates asymmetric classifications: a date before service starts can be `NoServiceThatDay` if later service exists, while a date inside the planned service span can be `ServiceDateOutOfRange` if every later planned date is removed by `calendar_dates.exception_type = 2`.
+
+**Affected endpoint:** [[schedule-for-route]] — empty schedule responses where no trips run on the requested date.
+
+**Observed behaviour:** The response label is based on whether later effective service exists. Before-start dates can be labelled `NoServiceThatDay`; in-span dates whose later planned dates are all removed can be labelled `ServiceDateOutOfRange`.
+
+**Intended behaviour:** `ServiceDateOutOfRange` should mean the requested date is outside the route's planned service span, before the first planned service date or after the last planned service date. `NoServiceThatDay` should mean the requested date is inside that span, but no trips operate after calendar exceptions are applied.
+
+**Client impact if fixed:** The response shape is unchanged. Only the `text` label changes in empty-schedule edge cases. Static review for PR #1337 found no known client dependency on the exact `NoServiceThatDay` vs `ServiceDateOutOfRange` labels for this endpoint.
+
+**Decision:** [ ] Preserve  [x] Fix  [ ] Conditional fix
+
+**Notes:** Maglev's intended contract is the symmetric planned service-span rule documented in [[schedule-for-route]] Implementation Decisions. PR #1337 proposed moving the query toward exact future-effective-service semantics by applying removal exceptions to every future candidate date, but that was not adopted because it does not match the intended service-span distinction and introduces a more expensive request-path query for a narrow label difference. Any Maglev code path that still follows the legacy future-effective-service rule should be updated/tested against the planned-span contract.
+
+---
+
 ## DC-3: `NoServiceThatDay` incorrectly includes a partial data body
 
 **Note:** DC-3 is tightly coupled to DC-2 and should be decided alongside it. The status code question is addressed there.
