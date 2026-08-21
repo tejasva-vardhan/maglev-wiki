@@ -52,7 +52,7 @@ A GET request to `/api/where/trips-for-location.json` (or `.xml`).
    - If `latSpan` and `lonSpan` are both given, the box is centred on the coordinate with half those spans as the offsets.
    - If neither form is supplied, the bounding box degenerates to a single point (zero area) and no vehicles are returned.
 
-4. The server identifies candidate block instances (vehicle–day assignments) whose scheduled routes pass through the bounding box at any point within the window that spans 30 minutes before and 10 minutes after the query time. This window accommodates vehicles running late or early. ([`BlockStatusServiceImpl.java#L195–L196`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L195-L196)) *Maglev selects candidates from live vehicle positions instead of a scheduled block search, with no equivalent scheduled-window filter — see [Implementation Decisions](#implementation-decisions).*
+4. The server identifies candidate block instances (vehicle–day assignments) whose scheduled routes pass through the bounding box at any point within the window that spans 30 minutes before and 10 minutes after the query time. This window accommodates vehicles running late or early. ([`BlockStatusServiceImpl.java#L195–L196`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L195-L196))
 
 5. For each candidate, the server computes the vehicle's position at the query time. When real-time GPS data is available the position is GPS-derived and `predicted` is `true`; otherwise the position is extrapolated from the static schedule and `predicted` is `false`.
 
@@ -155,18 +155,6 @@ This isn't a new, one-off mechanism: it's the same convention `trips-for-route` 
 This convention currently only covers "reference-block" endpoints (`trips-for-location`, `trips-for-route`); primary-listing endpoints like `stops-for-location` and `search-stop` have no referring entity to borrow an ID from and still resolve a stop's own ID via the unrelated, genuinely-unordered `GetAgenciesForStops` mechanism (§10 row 3 of the multi-agency spec). Full consistency across both families is what §9 of that spec (namespaced storage) would deliver — a stop's ID fixed at import time, the same way legacy's `AgencyAndId` is.
 
 No client currently consumes `trips-for-location` (confirmed against Wayfinder, iOS, and Android during this PR's review), so this has no live impact today. The durable fix, if this becomes load-bearing before §9 lands, is the same one already tracked for this whole class of problem: §9's namespaced-storage proposal.
-
----
-
-**Trip candidates are selected from live vehicle positions, not a scheduled-time-range block search — service-date resolution is not guaranteed to cover every trip this endpoint can select.**
-
-In Java, candidate selection and service-date resolution are the same mechanism: `BlockStatusServiceImpl` finds candidate block instances via a scheduled-time-range search over the ±30/+10-minute window described in step 4 above, so a trip can only ever be selected if its own scheduled span already overlaps that window. [Source: [`BlockStatusServiceImpl.java#L195-L210`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L195-L210)]
-
-Maglev's `trips-for-location` instead selects candidates from live GTFS-RT vehicle positions (`internal/restapi/trips_for_location_handler.go`) — a vehicle is a candidate once it reports a position inside the bounding box, with no scheduled-window filter on the trip's own timing at all. This selection path is unrelated to PR #1316's `serviceDateResolver` (`internal/restapi/trips_helper.go`, shared with `trips-for-route`): that resolver classifies a trip's service date by checking whether its scheduled span overlaps the same ±30/+10-minute window, on the query day and then the day before, falling back to the query day if neither matches. On `trips-for-route`, that fallback path is unreachable, because trip selection there uses this identical window, so a selected trip always matches one of the two checks. On `trips-for-location`, selection has no such constraint: a vehicle whose trip is running further outside the window (e.g. more than 30 minutes late on a previous day's trip) can still be selected as long as it is still reporting a fresh position, and the resolver then silently falls back to query-day midnight — the same wrong-day symptom `serviceDate` resolution exists to fix, just not fully closed for this one endpoint.
-
-This is pre-existing architecture (the real-time-vehicle-driven trip source predates PR #1316) and is not caused by Maglev's single-static-feed limitation. It has no live client impact today: no client (Wayfinder, iOS, or Android) consumes `trips-for-location` at all (see the stop-reference decision above).
-
-If this is reconsidered, the fix is to mirror `trips-for-route`: resolve candidates via a scheduled-time-range search over blocks rather than filtering live vehicle positions directly, so that selection and service-date resolution share the same window by construction, the way they now do on the route side. Widening the resolver's window alone would not close the gap — the underlying selection mechanism has no window to widen.
 
 ---
 
@@ -301,7 +289,7 @@ None.
 
 **`data.list[].tripId`** — Combined `agencyId_entityId` identifier of the scheduled trip the vehicle is executing.
 
-**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the service day for this trip. For trips that extend past midnight, the service date is the previous calendar day: the block search resolves candidate service dates against the block's scheduled time range (which can exceed 24:00:00), not against the calendar date of the query time. [Source: [`BlockStatusServiceImpl.java#L192-L210`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L192-L210), [`BlockCalendarServiceImpl.java#L247-L265`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockCalendarServiceImpl.java#L247-L265)] Maglev's equivalent resolution is not guaranteed to cover every trip this endpoint can select — see [Implementation Decisions](#implementation-decisions).
+**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the service day for this trip. For trips that extend past midnight, the service date is the previous calendar day: the block search resolves candidate service dates against the block's scheduled time range (which can exceed 24:00:00), not against the calendar date of the query time. [Source: [`BlockStatusServiceImpl.java#L192-L210`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L192-L210), [`BlockCalendarServiceImpl.java#L247-L265`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockCalendarServiceImpl.java#L247-L265)]
 
 **`data.list[].frequency`** — For headway-based (frequency) trips, a frequency object giving start time, end time, headway, and exactTimes. `null` for ordinary fixed-schedule trips.
 
@@ -355,7 +343,7 @@ None.
 
 **`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within the ordered sequence of trips in the vehicle's block for the service day. `-1` if the active trip could not be determined.
 
-**`data.list[].status.serviceDate`** — Unix milliseconds of midnight at the start of the service day. Duplicates `data.list[].serviceDate`, including the previous-calendar-day behaviour for trips extending past midnight, and the same resolution gap — see [Implementation Decisions](#implementation-decisions).
+**`data.list[].status.serviceDate`** — Unix milliseconds of midnight at the start of the service day. Duplicates `data.list[].serviceDate`, including the previous-calendar-day behaviour for trips extending past midnight.
 
 **`data.list[].status.frequency`** — Frequency object for headway-based trips; `null` otherwise.
 
