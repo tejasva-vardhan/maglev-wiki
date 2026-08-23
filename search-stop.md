@@ -128,6 +128,14 @@ Maglev instead sorts `references.routes` using the same natural-sort, multi-fiel
 
 Practical effect versus legacy: routes with purely numeric short names sort in numeric rather than lexicographic order, and a route with an empty `shortName` but a non-empty `longName` sorts by that `longName` text rather than falling straight to its ID.
 
+**`data.references.situations` is populated for stop alerts, rather than preserving Java's empty situation-reference list for this endpoint (deviates from legacy implementation).**
+
+The legacy response model has a generic `references.situations` field, and Java's custom JSON serializer writes null `List` properties as empty arrays. However, the `search-stop` path never adds service alerts to that list: `StopAction.index()` wraps only the stop suggestions in `StopSearchResultBean`, `BeanFactoryV2.getResponse(StopSearchResultBean)` converts each stop with `getStop(StopBean)`, and `getStop` adds route references, agency references through those routes, and parent-stop references, but no `ServiceAlertBean` references.
+
+Maglev treats that as an omission in the legacy endpoint implementation and populates `references.situations` with service alerts affecting the returned stops when references are included. This lets clients resolve stop-level alerts directly from a stop-search response instead of issuing a follow-up stop or arrivals request.
+
+Practical effect versus legacy: Java exposes an empty `situations` array for this endpoint even when matching stops have active alerts; Maglev may return real situation objects. Because those objects come from real-time alert state, the endpoint is not purely static when situation references are included.
+
 **A no-match prefix query returns HTTP 200 with an empty list, rather than HTTP 404 (deviates from legacy).**
 
 The legacy implementation ([`StopAction.java#L56-L57`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L56-L57)) explicitly checks whether the pre-filter suggestion list is empty and short-circuits to a 404 in that case:
@@ -252,7 +260,7 @@ None.
 
 **`data.outOfRange`** — Always `false` for this endpoint.
 
-**`data.references`** — Full objects for all routes and agencies referenced in the list. Present when `includeReferences=true`.
+**`data.references`** — Full objects for all routes and agencies referenced in the list. Present when `includeReferences=true`. Legacy Java exposes an empty `situations` array for this endpoint; Maglev populates it with stop-alert references when applicable — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -307,9 +315,10 @@ None.
 {
   "type": "object",
   "properties": {
-    "agencies": { "type": "array", "items": { "type": "object" } },
-    "routes":   { "type": "array", "items": { "type": "object" } },
-    "stops":    { "type": "array", "items": { "type": "object" } }
+    "agencies":   { "type": "array", "items": { "type": "object" } },
+    "routes":     { "type": "array", "items": { "type": "object" } },
+    "situations": { "type": "array", "items": { "type": "object" } },
+    "stops":      { "type": "array", "items": { "type": "object" } }
   }
 }
 ```
@@ -319,6 +328,8 @@ None.
 **`data.references.routes`** — Full route objects for all routes referenced by `routeIds` or `staticRouteIds` across the returned stops. Sorted by route short name (alphabetically). If no short name is set, the combined route ID is used as the sort key. *Maglev deviates from this sort rule — see [Implementation Decisions](#implementation-decisions).*
 
 **`data.references.stops`** — Parent station objects for any stop in the list that has a non-empty `parent` field.
+
+**`data.references.situations`** — Service-alert situation references. Legacy Java leaves this array empty for `search-stop`; Maglev populates it with alerts affecting returned stops — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
