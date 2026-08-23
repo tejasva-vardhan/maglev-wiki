@@ -46,7 +46,7 @@ An HTTP GET request to `/api/where/search/stop.json` (or `.xml`) with a non-empt
 
 1. The server receives a GET request. It converts `input` to lower case before using it as the lookup key.
 
-2. The server looks up the key in the stop-name search index. This index is keyed by all prefixes of each whitespace/hyphen/slash/parenthesis/ampersand-delimited token in every stop name. For multi-word names, the index also stores keys that span the first token boundary and extend character by character up to 32 characters, enabling queries like `pine st & 9th` to match `Pine St & 9th Ave`. The key is matched exactly — there is no fuzzy matching. ([`BundleSearchServiceImpl.java:169-201`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L169-L201))
+2. The server looks up the key in the stop-name search index. This index is keyed by all prefixes of each whitespace/hyphen/slash/parenthesis/ampersand-delimited token in every stop name. For multi-word names, the index also stores keys that span the first token boundary and extend character by character up to 32 characters, enabling queries like `pine st & 9th` to match `Pine St & 9th Ave`. The key is matched exactly — there is no fuzzy matching. ([`BundleSearchServiceImpl.java:169-201`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L169-L201)) *Maglev intentionally uses order-independent per-term prefix matching instead — see [Implementation Decisions](#implementation-decisions).*
 
 3. Stops within the matching bucket are ordered by their combined stop ID (ascending lexicographic order). ([`BundleSearchServiceImpl.java:337-345`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L337-L345))
 
@@ -136,6 +136,16 @@ Maglev treats that as an omission in the legacy endpoint implementation and popu
 
 Practical effect versus legacy: Java exposes an empty `situations` array for this endpoint even when matching stops have active alerts; Maglev may return real situation objects. Because those objects come from real-time alert state, the endpoint is not purely static when situation references are included.
 
+**Stop-name matching is order-independent and AND-combines per-term prefixes, rather than using Java's exact lookup key in the legacy prefix index (deviates from legacy).**
+
+The legacy search index stores every prefix of each stop-name token and selected ordered multi-word prefixes from the beginning of the name. A request then lowercases the full `input` string and looks it up as one exact index key. Multi-word queries are therefore order-sensitive and limited to the indexed prefix strings; Java also caps generated cross-token keys at 32 characters.
+
+Maglev instead sanitizes the input into terms and builds an FTS5 query where every term is a quoted prefix and terms are joined with `AND` (`internal/restapi/search_stops_handler.go`). Any stop name containing all requested term prefixes can match, regardless of term order.
+
+This keeps multi-word stop search precise while avoiding the false negatives caused by phrase-adjacent matching. It is intentionally different from `search-route`, whose Maglev implementation OR-combines route-name terms for broader route discovery; stop names contain many generic street/location tokens, so OR matching would produce noisy stop suggestions and could push the intended all-term match past the `maxCount` boundary.
+
+Practical effect versus legacy: a query like `Library Montgomery` can match `Montgomery Creek (SR 299 @ Montgomery Creek Library)`, and reversing terms does not change the result set. This is more permissive than Java's ordered-prefix autocomplete behavior, while still requiring every term to match.
+
 **A no-match prefix query returns HTTP 200 with an empty list, rather than HTTP 404 (deviates from legacy).**
 
 The legacy implementation ([`StopAction.java#L56-L57`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L56-L57)) explicitly checks whether the pre-filter suggestion list is empty and short-circuits to a 404 in that case:
@@ -199,7 +209,7 @@ None.
 }
 ```
 
-**`input`** — The string to match against stop names. The server converts it to lower case before lookup. Matching is prefix-based: a value of `pine` matches any stop whose name contains a token starting with `pine`. Multi-word prefixes (e.g. `pine st`) are also matched as long as they correspond to a prefix of the full stop name up to 32 characters. Does not match against stop codes or stop entity IDs.
+**`input`** — The string to match against stop names. The server converts it to lower case before lookup. Matching is prefix-based: a value of `pine` matches any stop whose name contains a token starting with `pine`. Multi-word prefixes (e.g. `pine st`) are also matched as long as they correspond to a prefix of the full stop name up to 32 characters. Does not match against stop codes or stop entity IDs. *Maglev's multi-term matching is order-independent and requires all terms to match — see [Implementation Decisions](#implementation-decisions).*
 
 **`maxCount`** — Upper bound on the number of results returned. Defaults to 20. Applied before the route-type filter, so the actual list may be shorter.
 
