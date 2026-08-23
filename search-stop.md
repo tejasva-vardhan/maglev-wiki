@@ -54,7 +54,7 @@ An HTTP GET request to `/api/where/search/stop.json` (or `.xml`) with a non-empt
 
 5. The truncated list is filtered to remove stops that are served exclusively by special-vehicle route types. Specifically: a stop with exactly one route is excluded if that route's type is 711, 712, 713, or 714; a stop with two or more routes is always included regardless of their types; a stop with zero routes is excluded. ([`StopAction.java:61-65`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L61-L65))
 
-6. The server converts each remaining stop to its API representation and collects all routes and agencies referenced by those stops into the references block. Routes in the references block are sorted by short name (plain lexicographic compare, falling back directly to the combined route ID when short name is unset); within each agency, the primary agency's routes appear first when a custom sort is configured. ([`BeanFactoryV2.java:147-161`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L147-L161)) *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
+6. The server converts each remaining stop to its API representation and collects all routes and agencies referenced by those stops into the references block. Routes in the references block are sorted by short name (plain lexicographic compare, falling back directly to the combined route ID when short name is unset); within each agency, the primary agency's routes appear first when a custom sort is configured. ([`BeanFactoryV2.java:147-161`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L147-L161)) *Maglev deviates from this for route and agency reference ordering — see [Implementation Decisions](#implementation-decisions).*
 
 7. The server returns HTTP 200 with the standard envelope containing the list, `limitExceeded`, `outOfRange` (always `false`), and the references block.
 
@@ -153,6 +153,14 @@ Maglev instead sanitizes the input into terms and builds an FTS5 query where eve
 This keeps multi-word stop search precise while avoiding the false negatives caused by phrase-adjacent matching. It is intentionally different from `search-route`, whose Maglev implementation OR-combines route-name terms for broader route discovery; stop names contain many generic street/location tokens, so OR matching would produce noisy stop suggestions and could push the intended all-term match past the `maxCount` boundary.
 
 Practical effect versus legacy: a query like `Library Montgomery` can match `Montgomery Creek (SR 299 @ Montgomery Creek Library)`, and reversing terms does not change the result set. This is more permissive than Java's ordered-prefix autocomplete behavior, while still requiring every term to match.
+
+**`data.references.agencies` is sorted by agency ID only, rather than preserving Java's default insertion order or primary-agency override (deviates from legacy/spec prose).**
+
+The agencies in this reference array are the agencies that own routes referenced by the returned stops; stops themselves do not carry a GTFS `agency_id`. Java adds those agencies while route references are built. Its `agencySort` helper only reorders the agency list when `customRouteSort.getPrimarySortAgency()` is non-null; otherwise the list remains in reference-insertion order.
+
+Maglev has no primary-agency sort configuration for this endpoint and instead applies its shared agency-reference ordering: sort by agency ID. This gives clients a deterministic, endpoint-independent order for agency references rather than exposing route/reference construction order.
+
+Practical effect versus legacy: multi-agency stop-search responses may list agencies alphabetically by ID even when Java would preserve first-encountered order or move a deployment-configured primary agency to the front. The set of agencies is unchanged; only the `references.agencies` array order differs.
 
 **A no-match prefix query returns HTTP 200 with an empty list, rather than HTTP 404 (deviates from legacy).**
 
@@ -341,7 +349,7 @@ None.
 }
 ```
 
-**`data.references.agencies`** — Full agency objects for all agencies that own a route appearing in `data.references.routes`. Sorted with the primary agency first (when a custom route sort is configured), then alphabetically by agency ID.
+**`data.references.agencies`** — Full agency objects for all agencies that own a route appearing in `data.references.routes`. Sorted with the primary agency first (when a custom route sort is configured), then alphabetically by agency ID. *Maglev sorts this array by agency ID only — see [Implementation Decisions](#implementation-decisions).*
 
 **`data.references.routes`** — Full route objects for all routes referenced by `routeIds` or `staticRouteIds` across the returned stops. Sorted by route short name (alphabetically). If no short name is set, the combined route ID is used as the sort key. *Maglev deviates from this sort rule — see [Implementation Decisions](#implementation-decisions).*
 
