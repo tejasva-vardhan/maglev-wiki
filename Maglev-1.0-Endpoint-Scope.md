@@ -65,6 +65,10 @@ Maglev 1.0 is **not** intended to reproduce every endpoint that exists in the le
 
 ### Problem reports
 
+These endpoints are in scope for compatibility with existing apps, but the
+problem-reporting feature is deprecated. Do not expand this API; it is an
+immediate candidate for replacement by a future v2 API.
+
 - `/api/where/report-problem-with-stop/{id}.json`
 - `/api/where/report-problem-with-trip/{id}.json`
 
@@ -72,8 +76,8 @@ Maglev 1.0 is **not** intended to reproduce every endpoint that exists in the le
 
 These endpoints are intentionally added by Maglev and are in scope for 1.0:
 
-- `/api/where/problem-reports-for-stop/{id}.json`
-- `/api/where/problem-reports-for-trip/{id}.json`
+- `/api/where/problem-reports-for-stop/{id}.json` — deprecated problem-reporting feature
+- `/api/where/problem-reports-for-trip/{id}.json` — deprecated problem-reporting feature
 - `/api/v2/metadata.json`
 
 ## In-scope GTFS Realtime protobuf endpoints
