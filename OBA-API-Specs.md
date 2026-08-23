@@ -55,12 +55,6 @@ and suspected defects.
 |----------|------|
 | `GET /api/where/vehicles-for-agency/{id}.json` | [[vehicles-for-agency]] |
 
-## Service Alerts
-
-| Endpoint | Page |
-|----------|------|
-| `GET /api/where/situation/{id}.json` | [[situation]] |
-
 ## Search
 
 | Endpoint | Page |
