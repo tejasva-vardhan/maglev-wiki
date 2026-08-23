@@ -4,6 +4,8 @@ Cockburn-style use case specs generated from the live Java implementation.
 Each page covers accepted parameters, response structure, error conditions,
 and suspected defects.
 
+For the authoritative Maglev 1.0 endpoint list, see [[Maglev-1.0-Endpoint-Scope]].
+
 ## Agencies
 
 | Endpoint | Page |

@@ -10,6 +10,7 @@
 
 * OBA API Specs
 - [[OBA-API-Specs][API Spec Index]]
+- [[Maglev-1.0-Endpoint-Scope][Maglev 1.0 Endpoint Scope]]
 ** Agencies
 - [[agencies-with-coverage][Agencies with Coverage]]
 - [[agency][Agency]]
@@ -43,7 +44,6 @@
 ** Utilities
 - [[config][Config]]
 - [[current-time][Current Time]]
-- [[block][Block]]
 - [[shape][Shape]]
 ** On-Demand
 - [[GTFS-Flex Support][GTFS-Flex Support]]
