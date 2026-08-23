@@ -27,7 +27,7 @@ Rider (accessing the system via a client app).
 
 ## Minimal Guarantees
 
-- If the input is missing, the server returns HTTP 404 with a validation error body (outside the standard envelope).
+- If the input is missing, the server returns HTTP 404 with a validation error body (outside the standard envelope). *Maglev intentionally returns HTTP 400 in its standard validation envelope instead — see [Implementation Decisions](#implementation-decisions).*
 - If no stops match the prefix query, the server returns a 404 response in the standard envelope. *Maglev deviates from this — see [Implementation Decisions](#implementation-decisions).*
 - The response never contains stops that lack revenue service (at least one scheduled stop time with unrestricted pick-up or drop-off).
 
@@ -67,7 +67,7 @@ The server returns HTTP 404 with code 404 and text "resource not found" in the s
 The server returns HTTP 200 with an empty list. `limitExceeded` may be `true` if the pre-filter count exceeded `maxCount`. (Note: the 404 check occurs before filtering, so an all-filtered result does not produce a 404.)
 
 **Input validation failure:**
-If `input` is absent, Struts2 request validation fires before the action runs. The response is HTTP 404 with the body `{"fieldErrors":{"input":["missing input"]}}` — a raw validation error object, not the standard OBA response envelope.
+If `input` is absent, Struts2 request validation fires before the action runs. The response is HTTP 404 with the body `{"fieldErrors":{"input":["missing input"]}}` — a raw validation error object, not the standard OBA response envelope. *Maglev intentionally returns HTTP 400 in its standard validation envelope instead — see [Implementation Decisions](#implementation-decisions).*
 
 **Missing or invalid API key:**
 The server returns HTTP 401.
@@ -135,6 +135,14 @@ The legacy response model has a generic `references.situations` field, and Java'
 Maglev treats that as an omission in the legacy endpoint implementation and populates `references.situations` with service alerts affecting the returned stops when references are included. This lets clients resolve stop-level alerts directly from a stop-search response instead of issuing a follow-up stop or arrivals request.
 
 Practical effect versus legacy: Java exposes an empty `situations` array for this endpoint even when matching stops have active alerts; Maglev may return real situation objects. Because those objects come from real-time alert state, the endpoint is not purely static when situation references are included.
+
+**Missing `input` returns HTTP 400 in the standard validation envelope, rather than Java's raw HTTP 404 validation object (deviates from legacy).**
+
+The legacy Struts2 field validator fires before `StopAction.index()` runs. That validation path returns HTTP 404 with a raw field-errors object outside the normal OBA response envelope: `{"fieldErrors":{"input":["missing input"]}}`.
+
+Maglev instead routes missing `input` through the same required-parameter parser and validation-error response helper used by other Maglev endpoints. The response is HTTP 400 with the field error under `data.fieldErrors`, preserving Maglev's standard response shape for client-side request errors.
+
+Practical effect versus legacy: clients do not need a search-stop-specific raw-error parser for missing `input`; they can handle it like other Maglev validation failures. Clients that depended on Java's HTTP 404 status or unenveloped body will see HTTP 400 and the standard Maglev envelope instead.
 
 **Stop-name matching is order-independent and AND-combines per-term prefixes, rather than using Java's exact lookup key in the legacy prefix index (deviates from legacy).**
 
