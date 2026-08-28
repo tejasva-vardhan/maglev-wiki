@@ -77,7 +77,7 @@ per-agency stop lists. The differences that remain:
 | Static inputs | N per-agency zips, one `GtfsBundle` each | Exactly one zip |
 | Stop ownership | Exactly one agency — the feed's `defaultAgencyId` | Every agency whose routes serve the stop; a stop served by MTS and UCSD routes appears in **both** agencies' `stop-ids-for-agency` lists |
 | Stops served by no trip | Owned by the feed's default agency | Owned by no agency (transitive joins find nothing); dropped entirely by location/search endpoints today, since no agency can be resolved for the combined ID (verified 2026-08 against both query and non-query modes of `stops-for-location`) — see §10 below |
-| Public stop ID prefix | The owning agency, fixed at build time | Endpoint-dependent: per-agency/per-route endpoints stamp the *requested* agency; location/search endpoints use the first agency returned by `GetAgenciesForStops` (unordered) — see §3.3 |
+| Public stop ID prefix | The owning agency, fixed at build time | Endpoint-dependent: per-agency/per-route endpoints stamp the *requested* agency; location endpoints use the first agency returned by `GetAgenciesForStops` (unordered); `search-stop` result IDs use the lowest agency in the precomputed stop-agency index — see §3.3 and §10 |
 | Absorbed-stop lookups | 404 (entity never stored) | n/a — no consolidation |
 | Cross-feed ID collisions | Impossible — every ID is an `AgencyAndId` pair | n/a today (single feed); would be primary-key violations if feeds were naively concatenated |
 | Shared physical stops | Consolidated via mapping file | Two stops, two map pins, arrivals split across them |
@@ -210,10 +210,12 @@ it: **different endpoint families spell a stop's combined ID differently.**
 Per-agency and per-route endpoints stamp the *requested* agency onto every
 raw stop ID (`stop_ids_for_agency_handler.go:44`,
 `stops_for_route_handler.go:174,276,502` — `FormCombinedID(requestedAgency,
-rawID)`), while location/search endpoints derive the prefix from the first
-row of `GetAgenciesForStops` (§2.1). The canonical stop is one row in the
-DB, but its spelling varies by endpoint. v1 makes no handler changes, so the
-tests must assert these spellings as-is:
+rawID)`), while location endpoints derive the prefix from the first
+row of `GetAgenciesForStops` (§2.1). `search-stop` result IDs use the
+lowest agency in the precomputed stop-agency index, with agency-less
+matches handled as a tracked limitation in §10. The canonical stop is one
+row in the DB, but its spelling varies by endpoint. v1 makes no handler
+changes, so the tests must assert these spellings as-is:
 
 - `stop-ids-for-agency/MTS` and `.../UCSD` are both non-empty; the canonical
   stop appears in **both** lists — the UCSD trips' stop_times now reference
@@ -811,7 +813,8 @@ beyond "revisit when that ships."
 |---|---|---|---|
 | `stops-for-location` stop-code (`query`) search, matched stop has no routes | Returned regardless — routes are loaded with no routes-empty filter in the stop-code path | Dropped — `agency == nil` in the results loop, since no `stop_times` row means no resolvable agency | [[stops-for-location]] § Implementation Decisions |
 | `search-stop`, parent station reached through children under different agencies | One stable ID and one `references.stops` entry per physical station, fixed at ingest | One `references.stops` entry per (parent station, resolving agency) pair actually referenced | [[search-stop]] § Implementation Decisions |
-| Agency prefix on a stop's combined ID (location/search endpoints) | Fixed at build time, stable per stop | Whichever agency `GetAgenciesForStops` happens to return first (no `ORDER BY`); non-deterministic across requests for a stop served by more than one agency's routes | §2.1–§2.2 above |
+| `search-stop`, matched stop has no routes/no resolvable agency before `maxCount` truncation | Still has a bundle-level combined ID and is sorted among all other matches by that ID before the route-type filter removes it | Has no combined-ID sort key, so it sorts after agency-resolved matches before truncation and is then dropped by the zero-route filter | [[search-stop]] § Implementation Decisions |
+| Agency prefix on a stop's combined ID (location endpoints) | Fixed at build time, stable per stop | Whichever agency `GetAgenciesForStops` happens to return first (no `ORDER BY`); non-deterministic across requests for a stop served by more than one agency's routes | §2.1–§2.2 above |
 | Stop reference ID for `trips-for-location`'s schedule/status stops | Fixed at build time, stable per stop | Whichever response entry names the stop first (PR #1314); non-deterministic across requests for a stop referenced by trips from more than one agency | [[trips-for-location]] § Implementation Decisions |
 | Time-context agency for `stops-for-location`/`trips-for-location` (`time` parameter resolution) | Each entity's owning agency is fixed at ingest via `AgencyAndId`; per-agency-scoped code (e.g. `CalendarServiceDataFactoryImpl`'s use of `agency_timezone`) always resolves an entity's own real agency, never a guess | Uses `agencies[0]` (first-loaded agency) for every query, since a queried location/bounding box can't be mapped to an owning agency without per-stop agency assignment | [[stops-for-location]] § Implementation Decisions |
 

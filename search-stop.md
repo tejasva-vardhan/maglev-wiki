@@ -48,9 +48,9 @@ An HTTP GET request to `/api/where/search/stop.json` (or `.xml`) with a non-empt
 
 2. The server looks up the key in the stop-name search index. This index is keyed by all prefixes of each whitespace/hyphen/slash/parenthesis/ampersand-delimited token in every stop name. For multi-word names, the index also stores keys that span the first token boundary and extend character by character up to 32 characters, enabling queries like `pine st & 9th` to match `Pine St & 9th Ave`. The key is matched exactly — there is no fuzzy matching. ([`BundleSearchServiceImpl.java:169-201`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L169-L201)) *Maglev intentionally uses order-independent per-term prefix matching instead — see [Implementation Decisions](#implementation-decisions).*
 
-3. Stops within the matching bucket are ordered by their combined stop ID (ascending lexicographic order). ([`BundleSearchServiceImpl.java:337-345`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L337-L345))
+3. Stops within the matching bucket are ordered by their combined stop ID (ascending lexicographic order). ([`BundleSearchServiceImpl.java:337-345`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L337-L345)) *Maglev intentionally differs for stops with no resolvable agency; see [Implementation Decisions](#implementation-decisions).*
 
-4. If the bucket contains more than `maxCount` stops, the list is truncated to `maxCount` and `limitExceeded` is set to `true`. ([`BundleSearchServiceImpl.java:213-223`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L213-L223))
+4. If the bucket contains more than `maxCount` stops, the list is truncated to `maxCount` and `limitExceeded` is set to `true`. ([`BundleSearchServiceImpl.java:213-223`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L213-L223)) *In Maglev, agency-less matches have already been sorted after agency-resolved matches before this truncation; see [Implementation Decisions](#implementation-decisions).*
 
 5. The truncated list is filtered to remove stops that are served exclusively by special-vehicle route types. Specifically: a stop with exactly one route is excluded if that route's type is 711, 712, 713, or 714; a stop with two or more routes is always included regardless of their types; a stop with zero routes is excluded. ([`StopAction.java:61-65`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/StopAction.java#L61-L65))
 
@@ -154,6 +154,14 @@ This keeps multi-word stop search precise while avoiding the false negatives cau
 
 Practical effect versus legacy: a query like `Library Montgomery` can match `Montgomery Creek (SR 299 @ Montgomery Creek Library)`, and reversing terms does not change the result set. This is more permissive than Java's ordered-prefix autocomplete behavior, while still requiring every term to match.
 
+**Agency-less search matches sort after agency-resolved matches before `maxCount` truncation, rather than receiving a bundle-level agency identity from legacy Java (deviates from legacy, out of structural necessity).**
+
+Legacy Java sorts stop suggestions by the stop bean's combined ID: each key insertion calls `Collections.sort(suggestion, new StopBeanIdComparator())` ([`BundleSearchServiceImpl.java:337-345`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/bundle/BundleSearchServiceImpl.java#L337-L345)), and `StopBeanIdComparator` compares `StopBean.getId()` directly ([`StopBeanIdComparator.java:25-29`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/StopBeanIdComparator.java#L25-L29)). Those stop IDs are already agency-prefixed because Java's federated bundle model assigns every stop a single `AgencyAndId` at ingestion time.
+
+Maglev loads raw GTFS stops without an `agency_id` column and resolves stop agency context from serving routes. Its stop-search query therefore uses the lowest agency ID in `stop_agencies` to build the combined-ID sort key. If a matching stop has no serving route, there is no `stop_agencies` row and no combined ID to sort by; Maglev sorts those agency-less matches after agency-resolved matches, with raw stop ID only as a final tie-break among the agency-less rows.
+
+Practical effect versus legacy: unserved stops are still excluded later by the route-type filter, but in Maglev they no longer consume early `maxCount` slots ahead of real routed stops. A capped query can therefore return a routed stop where legacy Java might have spent that slot on an unserved stop that is subsequently filtered out. If Maglev later grows a federated bundle-level stop identity or another canonical agency assignment for every stop, this rule should be revisited.
+
 **`data.references.agencies` is sorted by agency ID only, rather than preserving Java's default insertion order or primary-agency override (deviates from legacy/spec prose).**
 
 The agencies in this reference array are the agencies that own routes referenced by the returned stops; stops themselves do not carry a GTFS `agency_id`. Java adds those agencies while route references are built. Its `agencySort` helper only reorders the agency list when `customRouteSort.getPrimarySortAgency()` is non-null; otherwise the list remains in reference-insertion order.
@@ -227,7 +235,7 @@ None.
 
 **`input`** — The string to match against stop names. The server converts it to lower case before lookup. Matching is prefix-based: a value of `pine` matches any stop whose name contains a token starting with `pine`. Multi-word prefixes (e.g. `pine st`) are also matched as long as they correspond to a prefix of the full stop name up to 32 characters. Does not match against stop codes or stop entity IDs. *Maglev's multi-term matching is order-independent and requires all terms to match — see [Implementation Decisions](#implementation-decisions).*
 
-**`maxCount`** — Upper bound on the number of results returned. Defaults to 20. Applied before the route-type filter, so the actual list may be shorter.
+**`maxCount`** — Upper bound on the number of results returned. Defaults to 20. Applied before the route-type filter, so the actual list may be shorter. *In Maglev, stops with no agency-resolved combined ID sort after agency-resolved stops before this cap is applied; see [Implementation Decisions](#implementation-decisions).*
 
 **`key`** — API authentication key. Missing or invalid key returns HTTP 401.
 
@@ -282,7 +290,7 @@ None.
 
 **`data.list`** — Array of stop objects matching the query. May be empty if all matched stops were excluded by the route-type filter. *Maglev also returns an empty list rather than a 404 when no stops matched the prefix at all — see [Implementation Decisions](#implementation-decisions).*
 
-**`data.limitExceeded`** — `true` if the raw number of index matches exceeded `maxCount` before filtering. The actual list may contain fewer than `maxCount` entries.
+**`data.limitExceeded`** — `true` if the raw number of index matches exceeded `maxCount` before filtering. The actual list may contain fewer than `maxCount` entries. *Maglev sorts agency-less matches after agency-resolved matches before checking this cap; see [Implementation Decisions](#implementation-decisions).*
 
 **`data.outOfRange`** — Always `false` for this endpoint.
 
