@@ -267,7 +267,7 @@ None.
 
 **`data.outOfRange`** — `true` when the query coordinates fall entirely outside the service area covered by the loaded transit bundle.
 
-**`data.references`** — Present when `includeReferences=true` (the default). Contains trips, routes, stops, agencies, and situations referenced by the list entries.
+**`data.references`** — Present when `includeReferences=true` (the default). Contains trips, routes, stops, agencies, and situations referenced by the list entries. Situation references are included only for explicit `situationIds` values; see [[Situation-References]].
 
 ---
 
@@ -297,7 +297,7 @@ None.
 
 **`data.list[].schedule`** — Stop-time schedule object. Present only when `includeSchedule=true`. See `data.list[].schedule` section below.
 
-**`data.list[].situationIds`** — Array of combined service-alert IDs currently affecting this trip. Corresponding alert objects appear in `data.references.situations`. Empty array when no alerts apply. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.list[].situationIds`** — Array of combined service-alert IDs currently affecting this trip. Corresponding alert objects appear in `data.references.situations`. Empty array when no alerts apply. See [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -393,7 +393,7 @@ None.
 
 **`data.list[].status.vehicleFeatures`** — Array of feature strings reported by the vehicle (e.g. accessibility equipment). Empty array when no features are reported.
 
-**`data.list[].status.situationIds`** — Service alert IDs applicable specifically to this vehicle journey (may overlap with the outer entry's `situationIds`). The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.list[].status.situationIds`** — Service alert IDs applicable specifically to this vehicle journey (may overlap with the outer entry's `situationIds`). Full alert objects appear in `data.references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -477,4 +477,4 @@ None.
 
 **`data.references.trips`** — Trip beans for all trips referenced in list entries. Populated only when `includeTrip=true` (the default).
 
-**`data.references.situations`** — Service alert beans for all situation IDs referenced in the response.
+**`data.references.situations`** — Service alert beans for all situation IDs referenced in the response. No ambient alert objects are included; see [[Situation-References]].

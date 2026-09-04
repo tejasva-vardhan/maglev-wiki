@@ -237,6 +237,6 @@ Maglev's `stops` table has no `agency_id` column; agency ownership of a stop is 
 
 **`data.references.trips[]`** — Always empty for this endpoint.
 
-**`data.references.situations[]`** — Always empty for this endpoint.
+**`data.references.situations[]`** — Always empty for this endpoint because the stop entry has no `situationIds` field; see [[Situation-References]].
 
 **`data.references.stopTimes[]`** — Always empty for this endpoint.

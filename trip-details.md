@@ -90,7 +90,7 @@ Client sends a GET request to `/api/where/trip-details/{id}.json` with a valid A
       - `vehicleFeatures`: list of feature strings for the vehicle
       - `situationIds`: combined IDs of any service alerts that apply to the vehicle's current journey
 
-   f. Collects all service alerts applicable to the trip at the query time. Any that are not restricted to a specific application (or whose restriction the system resolves as matching) have their IDs added to the entry-level `situationIds` and their full records added to `references.situations`.
+   f. Collects all service alerts applicable to the trip at the query time. Any that are not restricted to a specific application (or whose restriction the system resolves as matching) have their IDs added to the entry-level `situationIds` and their full records added to `references.situations`. See [[Situation-References]] for the shared dereferencing and ID-formation rules.
 
 5. The system returns HTTP 200 with the response envelope containing `data.entry` and `data.references`.
 
@@ -287,7 +287,7 @@ None. All observable behaviours were resolved through static analysis and live s
 
 **`data.entry`** — The trip details object; see below.
 
-**`data.references`** — Shared entity objects (agencies, routes, trips, stops, situations) keyed by the IDs that appear in the entry. Absent when `includeReferences=false`.
+**`data.references`** — Shared entity objects (agencies, routes, trips, stops, situations) keyed by the IDs that appear in the entry. Situation references are included only for explicit `situationIds` values; see [[Situation-References]]. Absent when `includeReferences=false`.
 
 ---
 
@@ -320,7 +320,7 @@ None. All observable behaviours were resolved through static analysis and live s
 
 **`data.entry.status`** — The vehicle's current real-time or schedule-derived status. Absent when `includeStatus=false` or when no tracking record exists for the block.
 
-**`data.entry.situationIds`** — Combined IDs of service alerts currently applicable to this trip. Full alert records are in `references.situations`. May be an empty array. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.situationIds`** — Combined IDs of service alerts currently applicable to this trip. Full alert records are in `references.situations`. May be an empty array. See [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -494,7 +494,7 @@ None. All observable behaviours were resolved through static analysis and live s
 
 **`data.entry.status.vehicleFeatures`** — List of feature strings describing the vehicle (agency-defined; may be empty).
 
-**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to the vehicle's current journey. Full records are in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to the vehicle's current journey. Full records are in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 

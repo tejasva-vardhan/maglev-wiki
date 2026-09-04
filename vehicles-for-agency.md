@@ -215,7 +215,7 @@ None.
 
 **`data.list`** — Array of vehicle status entries; see below.
 
-**`data.references`** — Populated when `includeReferences` is `true` (the default). Contains the trips, routes, agencies, stops, and situations referenced anywhere in `data.list`.
+**`data.references`** — Populated when `includeReferences` is `true` (the default). Contains the trips, routes, agencies, stops, and situations referenced anywhere in `data.list`. Situation references are included only for explicit `situationIds` values; see [[Situation-References]].
 
 ---
 
@@ -376,4 +376,4 @@ Each element describes one tracked vehicle.
 
 **`data.list[].tripStatus.vehicleFeatures`** — List of feature strings reported for this vehicle (e.g., accessibility or equipment descriptors). Empty array or absent when none are reported.
 
-**`data.list[].tripStatus.situationIds`** — IDs of active service alerts affecting this trip. Each ID corresponds to a situation in `references.situations`. Absent when there are no active alerts.
+**`data.list[].tripStatus.situationIds`** — IDs of active service alerts affecting this trip. Each ID corresponds to a situation in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. Absent when there are no active alerts.

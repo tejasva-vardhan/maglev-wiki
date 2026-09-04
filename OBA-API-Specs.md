@@ -76,10 +76,11 @@ For the authoritative Maglev 1.0 endpoint list, see [[Maglev-1.0-Endpoint-Scope]
 
 General Spec: [GTFS-Flex Support](/OneBusAway/maglev/wiki/GTFS-Flex%20Support)
 
-## Shared Algorithms
+## Shared Algorithms and Response Rules
 
 Behavior shared across multiple endpoint pages, documented once and linked from each.
 
 | Topic | Page |
 |-------|------|
 | Stop `direction` field inference from shape geometry | [[Stop-Direction-Calculation]] |
+| Service-alert situation IDs and `references.situations` inclusion | [[Situation-References]] |

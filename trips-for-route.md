@@ -288,7 +288,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list`** — Array of `tripDetails` entries, one per active block. Order is non-deterministic.
 
-**`data.references`** — Keyed collections of referenced entities: `trips`, `routes`, `agencies`, `stops`, `situations`. Populated from all entities referenced within the list entries. In Java, an entity only ever appears in `data.list` if a bean for it already exists in memory, so every referenced ID always resolves in `data.references`. **Maglev deviates from this**: reference beans not already on hand are fetched from the database separately, and a failed fetch is logged and skipped rather than failing the response, which can leave a referenced ID (`tripId`, `schedule.previousTripId`/`nextTripId`, `status.activeTripId`) with no matching entry here — see Implementation Decisions.
+**`data.references`** — Keyed collections of referenced entities: `trips`, `routes`, `agencies`, `stops`, `situations`. Populated from all entities referenced within the list entries; situation references are included only for explicit `situationIds` values, as described in [[Situation-References]]. In Java, an entity only ever appears in `data.list` if a bean for it already exists in memory, so every referenced ID always resolves in `data.references`. **Maglev deviates from this**: reference beans not already on hand are fetched from the database separately, and a failed fetch is logged and skipped rather than failing the response, which can leave a referenced ID (`tripId`, `schedule.previousTripId`/`nextTripId`, `status.activeTripId`) with no matching entry here — see Implementation Decisions.
 
 ---
 
@@ -314,7 +314,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list[].frequency`** — Frequency descriptor for headway-based service; `null` for timetable-based trips.
 
-**`data.list[].situationIds`** — IDs of active service alerts applicable to this trip. Empty array if none. Full alert details appear in `data.references.situations`. In Java "this trip" is always the active trip (same as `status.activeTripId`); under Maglev's interlining deviation, it follows `tripId` instead — see Implementation Decisions. The ID prefixing used here also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.list[].situationIds`** — IDs of active service alerts applicable to this trip. Empty array if none. Full alert details appear in `data.references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. In Java "this trip" is always the active trip (same as `status.activeTripId`); under Maglev's interlining deviation, it follows `tripId` instead — see Implementation Decisions. The ID prefixing used here also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 **`data.list[].schedule`** — Present only when `includeSchedule=true`. See `data.list[].schedule` below.
 
@@ -483,7 +483,7 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 **`data.list[].status.vehicleFeatures`** — Array of feature strings reported by the vehicle (e.g. accessibility equipment). Empty array when none reported.
 
-**`data.list[].status.situationIds`** — IDs of active service alerts applying to this vehicle journey. Empty array if none. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.list[].status.situationIds`** — IDs of active service alerts applying to this vehicle journey. Full alert details appear in `data.references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. Empty array if none. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 

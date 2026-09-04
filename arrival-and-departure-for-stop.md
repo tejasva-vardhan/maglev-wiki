@@ -356,7 +356,7 @@ None.
 
 **`data.entry.tripStatus`** — Full real-time status of the vehicle operating this trip, including its current position, heading, schedule deviation, and closest stop. Present whenever a block location exists (even if the position is schedule-based rather than GPS-derived). Absent when no block location is available. The `activeTripId` within `tripStatus` may differ from `entry.tripId` in cases of interlining — for example, if the vehicle is currently running the previous trip in the block that connects to the queried trip.
 
-**`data.entry.situationIds`** — IDs of active service alerts that apply to this stop call. Full alert objects are in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.situationIds`** — IDs of active service alerts that apply to this stop call. Full alert objects are in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -464,7 +464,7 @@ None.
 
 **`data.entry.tripStatus.vehicleFeatures`** — List of feature tags for the vehicle (e.g. accessibility features).
 
-**`data.entry.tripStatus.situationIds`** — IDs of service alerts applying to this trip's current status. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.tripStatus.situationIds`** — IDs of service alerts applying to this trip's current status. Full alert objects are in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -515,4 +515,4 @@ None.
 
 **`data.references.trips`** — Full trip records for the queried trip and the active trip referenced in `tripStatus`.
 
-**`data.references.situations`** — Full service alert records for all situation IDs listed in `entry.situationIds` and `entry.tripStatus.situationIds`.
+**`data.references.situations`** — Full service alert records for all situation IDs listed in `entry.situationIds` and `entry.tripStatus.situationIds`. No other ambient alert objects are included; see [[Situation-References]].

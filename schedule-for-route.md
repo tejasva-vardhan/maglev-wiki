@@ -34,7 +34,7 @@ Rider (accessing the system via a client application).
 
 - The response contains all trips operating on the requested route for the requested service date, grouped by direction of travel.
 - Each direction group includes an ordered list of stops (canonical travel order), an ordered list of trip IDs, and per-trip stop-time detail.
-- The references block contains full objects for all agencies, routes, stops, and trips referenced by the entry.
+- The references block contains full objects for all agencies, routes, stops, and trips referenced by the entry. Legacy Java also includes service-alert situation objects that apply to the queried route or its stops, even though the entry has no `situationIds` field. Maglev intentionally does not preserve those ambient situation references; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
 
 ## Trigger
 
@@ -57,7 +57,7 @@ A GET request arrives at `/api/where/schedule-for-route/{id}.json` (or `.xml`).
 8. For each direction group the system derives a canonical stop order using a topological sort across all collected stop sequences for that direction. This heuristic works well for simple linear routes but may produce an imperfect ordering for loops or routes with complex branching. ([`RouteScheduleBeanServiceImpl.java#L411-L436`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/RouteScheduleBeanServiceImpl.java#L411-L436))
 9. Trip IDs within each direction group are sorted in ascending order by their combined ID string. ([`BeanFactoryV2.java#L977`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L977))
 10. Stop times within each direction group are sorted by trip ID, then by arrival time within each trip, and then assembled into per-trip `tripsWithStopTimes` entries. ([`BeanFactoryV2.java#L961-L983`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L961-L983))
-11. The references block is populated with all agencies, routes, stops, trips, service alerts, and a flat list of all stop-time instances.
+11. The references block is populated with all agencies, routes, stops, trips, and a flat list of all stop-time instances. Legacy Java also populates `references.situations` with service alerts that apply to the queried route or any of its stops, despite there being no `situationIds` field in `data.entry`; Maglev intentionally differs and leaves `references.situations` empty for this endpoint under the shared [[Situation-References]] rule.
 12. The system returns HTTP 200 with the complete route schedule entry.
 
 ## Extensions
@@ -150,6 +150,16 @@ Client impact is expected to be low: the response shape is unchanged, and the af
 
 Implementation note: this entry defines the intended Maglev contract. Any Maglev code path that still follows the legacy future-effective-service rule for before-start dates or all-later-dates-removed cases should be treated as needing follow-up implementation/test coverage.
 
+**Ambient `references.situations` is omitted because no `situationIds` field references those alerts (SD-02)**
+
+Legacy Java is unusual for this endpoint: after building the static route schedule, it queries service alerts for the route and every stop in the schedule (`RouteScheduleBeanServiceImpl.addSituations`) and writes them directly into `data.references.situations` (`BeanFactoryV2.getRouteSchedule`). `RouteScheduleV2Bean` itself has no `situationIds` field, so these alert objects are ambient reference-block data rather than dereference targets. The alert query is also not scoped to the requested schedule date in the way the static schedule is; it uses the service-alert query's default time, which means publication-window filtering is not applied. See [[Situation-References]] for citations.
+
+Maglev intentionally does not preserve this one-off legacy behavior. `schedule-for-route` is a planning-oriented static schedule response, and active or published real-time/service-alert state should not appear in `references.situations` unless the response data explicitly includes IDs that point to those situations. Callers that need current alerts for a route should use an alert/situation-oriented endpoint or a real-time endpoint whose data section includes `situationIds`.
+
+Client impact is expected to be low: no known client depends on the legacy ambient situation array for route schedules, and removing it makes `schedule-for-route` follow the shared invariant that reference-block situations exist only to resolve explicit `situationIds` values.
+
+If this is reconsidered, the fallback is to reintroduce Java's ambient route/stop alert query and include those full objects in `references.situations`, but that would deliberately violate the shared [[Situation-References]] rule and should be documented as a new endpoint-specific exception.
+
 ## Open Questions
 
 None.
@@ -188,7 +198,7 @@ None.
 
 **`key`** — API key for client identification. Required by the framework; requests without a key may fail authentication depending on server configuration.
 
-**`includeReferences`** — Controls whether the response envelope includes a references block. For `schedule-for-route` the references are assembled unconditionally in the response-construction layer; this parameter has no observable effect on the output.
+**`includeReferences`** — Controls whether the response envelope includes a references block. In legacy Java `schedule-for-route` assembles references unconditionally in the response-construction layer, so this parameter has no observable effect on the output. Maglev follows the endpoint-specific reference behavior described above, but does not include ambient situation references; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
 
 ## Response Structure
 
@@ -326,7 +336,7 @@ None.
 
 ### data.references
 
-The references block contains full resolved objects for all entities cited in the entry. For `schedule-for-route` the references are always populated regardless of the `includeReferences` request parameter.
+The references block contains full resolved objects for all entities cited in the entry. For legacy Java `schedule-for-route`, references are always populated regardless of the `includeReferences` request parameter, and `references.situations` is additionally populated with route/stop alerts that are not cited by any `situationIds` field. Maglev intentionally omits those ambient situation references; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
 
 ```json
 {
@@ -350,6 +360,6 @@ The references block contains full resolved objects for all entities cited in th
 
 **`data.references.trips`** — Full trip objects for every active trip, including trip headsign, direction ID, service ID, block ID, shape ID, and route short name.
 
-**`data.references.situations`** — Service alert objects for alerts that apply to the queried route or any of its stops. Empty array when no alerts are active.
+**`data.references.situations`** — In legacy Java, service alert objects for alerts that apply to the queried route or any of its stops, even though `data.entry` has no `situationIds` field. Maglev intentionally returns an empty array for this endpoint because no situation IDs are explicitly referenced in the response data; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
 
 **`data.references.stopTimes`** — Flat list of all scheduled stop-time instances across all active trips, using the same per-stop structure as `tripsWithStopTimes[].stopTimes[]`. This list duplicates the stop times that are already present within `stopTripGroupings[].tripsWithStopTimes[].stopTimes[]`; both representations contain the same data.

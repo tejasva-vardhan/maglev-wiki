@@ -158,7 +158,7 @@ When `includePolylines` is `false`, the factory sets `group.setPolylines(null)` 
 
 **`data.entry`** — The stops-for-route payload (see below).
 
-**`data.references`** — Shared objects referenced by ID in the entry: `stops`, `routes`, `agencies`, `trips`, `situations`.
+**`data.references`** — Shared objects referenced by ID in the entry: `stops`, `routes`, `agencies`, and `trips`. `situations` is present but empty because this endpoint has no `situationIds` field; see [[Situation-References]].
 
 ---
 
@@ -283,4 +283,4 @@ When `includePolylines` is `false`, the factory sets `group.setPolylines(null)` 
 
 **`data.references.trips`** — Populated only if trip references are added elsewhere; typically empty for this endpoint.
 
-**`data.references.situations`** — Service alert objects; typically empty for this endpoint.
+**`data.references.situations`** — Empty array for this endpoint. Situation objects are included only when the response data explicitly contains matching `situationIds` values; see [[Situation-References]].

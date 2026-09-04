@@ -128,13 +128,15 @@ Maglev instead sorts `references.routes` using the same natural-sort, multi-fiel
 
 Practical effect versus legacy: routes with purely numeric short names sort in numeric rather than lexicographic order, and a route with an empty `shortName` but a non-empty `longName` sorts by that `longName` text rather than falling straight to its ID.
 
-**`data.references.situations` is populated for stop alerts, rather than preserving Java's empty situation-reference list for this endpoint (deviates from legacy implementation).**
+**Stop-alert situation references are not populated because the response has no `situationIds` field.**
 
 The legacy response model has a generic `references.situations` field, and Java's custom JSON serializer writes null `List` properties as empty arrays. However, the `search-stop` path never adds service alerts to that list: `StopAction.index()` wraps only the stop suggestions in `StopSearchResultBean`, `BeanFactoryV2.getResponse(StopSearchResultBean)` converts each stop with `getStop(StopBean)`, and `getStop` adds route references, agency references through those routes, and parent-stop references, but no `ServiceAlertBean` references.
 
-Maglev treats that as an omission in the legacy endpoint implementation and populates `references.situations` with service alerts affecting the returned stops when references are included. This lets clients resolve stop-level alerts directly from a stop-search response instead of issuing a follow-up stop or arrivals request.
+Maglev's intended contract matches that empty situation-reference result. Earlier Maglev behavior that populated `references.situations` with stop alerts is not part of the accepted spec contract because those alert objects were not referenced by any `situationIds` field in `data.list`. See [[Situation-References]] for the shared rule.
 
-Practical effect versus legacy: Java exposes an empty `situations` array for this endpoint even when matching stops have active alerts; Maglev may return real situation objects. Because those objects come from real-time alert state, the endpoint is not purely static when situation references are included.
+Practical effect: `search-stop` remains a stop-search response, not an ambient alert-discovery endpoint. Callers that need stop alerts should use an endpoint whose response data explicitly carries `situationIds`.
+
+Implementation note: this entry defines the intended Maglev contract. Any Maglev code path that still populates `references.situations` for `search-stop` without adding matching `situationIds` to the response data should be treated as needing follow-up implementation/test coverage.
 
 **Missing `input` returns HTTP 400 in the standard validation envelope, rather than Java's raw HTTP 404 validation object (deviates from legacy).**
 
@@ -294,7 +296,7 @@ None.
 
 **`data.outOfRange`** — Always `false` for this endpoint.
 
-**`data.references`** — Full objects for all routes and agencies referenced in the list. Present when `includeReferences=true`. Legacy Java exposes an empty `situations` array for this endpoint; Maglev populates it with stop-alert references when applicable — see [Implementation Decisions](#implementation-decisions).
+**`data.references`** — Full objects for all routes and agencies referenced in the list. Present when `includeReferences=true`. `situations` is empty for this endpoint because no `situationIds` field appears in `data.list`; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
 
 ---
 
@@ -363,7 +365,7 @@ None.
 
 **`data.references.stops`** — Parent station objects for any stop in the list that has a non-empty `parent` field.
 
-**`data.references.situations`** — Service-alert situation references. Legacy Java leaves this array empty for `search-stop`; Maglev populates it with alerts affecting returned stops — see [Implementation Decisions](#implementation-decisions).
+**`data.references.situations`** — Empty array for this endpoint. Legacy Java never adds stop-alert references here, and Maglev's intended contract follows the shared [[Situation-References]] rule: situation objects are included only when the response data explicitly contains matching `situationIds` values.
 
 ---
 

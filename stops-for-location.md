@@ -336,7 +336,7 @@ None. All observable behaviours were resolved through static source analysis and
 
 **`data.outOfRange`** — `true` when the search area does not intersect any agency's coverage area. The list is empty when this flag is `true`.
 
-**`data.references`** — Deduplicated objects referenced by IDs in the list. Contains sub-arrays `agencies`, `routes`, `stops`, `trips`, `situations`, and `stopTimes`. All are empty when `includeReferences=false`.
+**`data.references`** — Deduplicated objects referenced by IDs in the list. Contains sub-arrays `agencies`, `routes`, `stops`, `trips`, `situations`, and `stopTimes`. `situations` is empty because this endpoint has no `situationIds` field; see [[Situation-References]]. All arrays are empty when `includeReferences=false`.
 
 ---
 

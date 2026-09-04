@@ -50,7 +50,7 @@ An HTTP GET to `/api/where/trip-for-vehicle/{id}.json` (or `.xml`).
    - The `status` block is included by default (unless `includeStatus=false`) and contains the vehicle's current real-time or schedule-derived position, phase, schedule deviation, occupancy, and service alerts.
    - The `schedule` block (stop times for the active trip) is included only when `includeSchedule=true`.
    - The scheduled trip record is added to the references block from the status path — the active trip's full trip element (route, agency) is always added to `data.references` when the status block is present; when `includeTrip=true` the same trip is additionally added explicitly.
-5. Service alerts that apply to this vehicle journey at the requested time are collected and their IDs are included in both `data.entry.situationIds` and (redundantly) inside `data.entry.status.situationIds` when `includeStatus=true`. The full alert objects are added to `data.references`.
+5. Service alerts that apply to this vehicle journey at the requested time are collected and their IDs are included in both `data.entry.situationIds` and (redundantly) inside `data.entry.status.situationIds` when `includeStatus=true`. The full alert objects are added to `data.references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules.
 6. The system returns HTTP 200 with the assembled entry.
 
 ## Extensions
@@ -244,7 +244,7 @@ If this is reconsidered in the future, it needs to be coordinated with an iOS-si
 
 **`data.entry`** — The trip details object; see below.
 
-**`data.references`** — Dereferencing map for IDs that appear in the entry; absent when `includeReferences=false`.
+**`data.references`** — Dereferencing map for IDs that appear in the entry; `references.situations` contains only situations named by explicit `situationIds` values, as described in [[Situation-References]]. Absent when `includeReferences=false`.
 
 ### data.entry
 
@@ -272,7 +272,7 @@ If this is reconsidered in the future, it needs to be coordinated with an iOS-si
 
 **`data.entry.schedule`** — Stop-time schedule for the active trip. Present only when `includeSchedule=true`; see `data.entry.schedule` below.
 
-**`data.entry.situationIds`** — Array of combined service-alert IDs that currently apply to this vehicle journey. Absent (not an empty array) when no alerts apply — **Maglev deviates from this and always emits `[]`**, see [Implementation Decisions](#implementation-decisions). The corresponding alert objects are in `data.references.situations`; the ID prefixing used here also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.situationIds`** — Array of combined service-alert IDs that currently apply to this vehicle journey. Absent (not an empty array) when no alerts apply — **Maglev deviates from this and always emits `[]`**, see [Implementation Decisions](#implementation-decisions). The corresponding alert objects are in `data.references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ### data.entry.status
 
@@ -378,7 +378,7 @@ If this is reconsidered in the future, it needs to be coordinated with an iOS-si
 
 **`data.entry.status.vehicleFeatures`** — List of feature identifiers reported for this vehicle (e.g., accessibility features). Absent when the real-time source supplies none.
 
-**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to this vehicle journey at the requested time. Absent when none apply — **Maglev deviates from this and always emits `[]`**, and its ID prefixing also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.status.situationIds`** — Combined IDs of service alerts applicable to this vehicle journey at the requested time. Full alert objects are in `data.references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. Absent when none apply — **Maglev deviates from this and always emits `[]`**, and its ID prefixing also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ### data.entry.schedule
 

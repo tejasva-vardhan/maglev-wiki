@@ -293,7 +293,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`data.entry.nearbyStopIds[]`** — Combined IDs of other stops within 100 metres of the queried stop (excluding the queried stop itself). Full stop objects for each ID appear in `references.stops`.
 
-**`data.entry.situationIds[]`** — IDs of service alerts that affect this stop or any route serving it. Full alert objects appear in `references.situations`. Omitted when there are no applicable alerts — **Maglev deviates from this and always emits `[]`**, and its ID prefixing also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`data.entry.situationIds[]`** — IDs of service alerts that affect this stop or any route serving it. Full alert objects appear in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. Omitted when there are no applicable alerts — **Maglev deviates from this and always emits `[]`**, and its ID prefixing also deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 
@@ -402,7 +402,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`actualTrack`** — Track or platform number from real-time data, when applicable. Empty string otherwise.
 
-**`situationIds[]`** — IDs of service alerts that specifically affect this arrival/departure (e.g. an alert scoped to this route/stop/trip combination). Full alert objects in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`situationIds[]`** — IDs of service alerts that specifically affect this arrival/departure (e.g. an alert scoped to this route/stop/trip combination). Full alert objects are in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 **`tripStatus`** — Real-time or schedule-projected status of the vehicle executing this trip. Present whenever block location information is available; absent otherwise. See below for structure. When the vehicle is in the middle of a block and has not yet started the trip that will call at this stop, `tripStatus.activeTripId` will name the vehicle's current trip while the parent entry's `tripId` names the future trip.
 
@@ -491,7 +491,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`tripStatus.vehicleFeatures[]`** — List of feature strings describing vehicle capabilities (e.g. accessibility features).
 
-**`tripStatus.situationIds[]`** — IDs of service alerts affecting this vehicle/trip. Full alert objects in `references.situations`. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
+**`tripStatus.situationIds[]`** — IDs of service alerts affecting this vehicle/trip. Full alert objects are in `references.situations`; see [[Situation-References]] for the shared dereferencing and ID-formation rules. The ID prefixing used here deviates from Java in two ways — see [Implementation Decisions](#implementation-decisions).
 
 ---
 

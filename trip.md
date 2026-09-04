@@ -218,4 +218,4 @@ When the path segment `{id}` contains no underscore character, [`AgencyAndIdLibr
 
 **`data.references.trips`** — Always empty for this endpoint.
 
-**`data.references.situations`** — Always empty for this endpoint.
+**`data.references.situations`** — Always empty for this endpoint because the trip entry has no `situationIds` field; see [[Situation-References]].
