@@ -90,6 +90,8 @@ Client sends a GET request to `/api/where/trip-details/{id}.json` with a valid A
       - `vehicleFeatures`: list of feature strings for the vehicle
       - `situationIds`: combined IDs of any service alerts that apply to the vehicle's current journey
 
+      The active trip, closest stop, and next stop named by the status block are added to the references block independently of whether the schedule block is present. [Source: [`BeanFactoryV2.java#L533–L564`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-core/src/main/java/org/onebusaway/api/model/transit/BeanFactoryV2.java#L533-L564)]
+
    f. Collects all service alerts applicable to the trip at the query time. Any that are not restricted to a specific application (or whose restriction the system resolves as matching) have their IDs added to the entry-level `situationIds` and their full records added to `references.situations`. See [[Situation-References]] for the shared dereferencing and ID-formation rules.
 
 5. The system returns HTTP 200 with the response envelope containing `data.entry` and `data.references`.
@@ -115,7 +117,7 @@ The system treats the trip as unavailable and returns HTTP 404. This behaviour i
 The `status` key is absent from the entry entirely.
 
 **4d. `includeSchedule` is false.**
-The `schedule` key is absent from the entry entirely; no stops are added to references.
+The `schedule` key is absent from the entry entirely. Schedule-derived references are not added from that path: the schedule's stop-times, previous trip, and next trip are omitted along with the schedule block. Status-derived references still apply when `includeStatus` is true and a status block is present, so `status.activeTripId`, `status.closestStop`, and `status.nextStop` may still have corresponding entries in `references.trips` and `references.stops` even when `includeSchedule=false`; see step 4e.
 
 **4c. `includeTrip` is false.**
 The requested trip's own record is not added to references on that account; only the preceding and following block trips (if any, and only when `includeSchedule` is true) appear in `references.trips` from that path. This does not affect the active trip: if `includeStatus` is true and a tracking record exists, `status.activeTripId`'s full trip record is still added to `references.trips`, independent of `includeTrip` — see steps 4.c and 4.e in the Main Success Scenario. [Source: [`TripStatusBeanServiceImpl.java#L294–L295`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/beans/TripStatusBeanServiceImpl.java#L294-L295)]
