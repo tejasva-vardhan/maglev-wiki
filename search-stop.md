@@ -120,6 +120,10 @@ The call to `_service.getStopSuggestions(null, _input, maxCount)` hardcodes `nul
 
 The legacy implementation throws a NullPointerException when `includeReferences=false` is passed, serialising the response as the JSON literal `null` with HTTP 200 (see [Suspected Defects](#suspected-defects)). Maglev intentionally corrects this: passing `includeReferences=false` returns the standard envelope with `data.list` populated as usual and `data.references` present but with all arrays (`agencies`, `routes`, `situations`, `stops`) empty, consistent with how `includeReferences=false` behaves on other Maglev endpoints.
 
+**`maxCount` is validated as an integer from 1 through 250, rather than accepting any integer as in legacy Java (deviates from legacy).**
+
+Java's [`ApiSearchAction.setMaxCount`](https://github.com/OneBusAway/onebusaway-application-modules/blob/fed9494e4b3ff345efabcd17b9b21fbf2a9dab7e/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/search/ApiSearchAction.java#L44-L46) assigns the supplied integer without a range check. Maglev uses the shared `ParseMaxCount` validator (`internal/utils/api.go`), accepting 1–250 inclusive and returning HTTP 400 with `data.fieldErrors.maxCount` for zero, negative, non-integer, or greater-than-250 values. Both use 20 when the parameter is absent. This enforces a bounded search request, but clients that pass out-of-range values accepted by Java receive a validation error instead.
+
 **`data.references.routes` is sorted using natural (digit-aware) ordering with a short name → long name → agency ID → route ID fallback chain, rather than legacy's plain lexicographic short name → route ID comparator (deviates from legacy).**
 
 The legacy implementation (`BeanFactoryV2.getResponse(StopSearchResultBean)`) sorts `references.routes` via an injected `RouteSorting` strategy; the default implementation (`DefaultRouteSort.compareRoutes`) does a plain `String.compareTo` on each route's `nullSafeShortName` — `shortName` if set, otherwise the combined route ID directly. This is plain alphabetical ordering (e.g. route `"10"` sorts before route `"9"`) and never considers `longName`.
@@ -216,7 +220,7 @@ None.
     "maxCount": {
       "type": "integer",
       "default": 20,
-      "description": "Maximum number of stops to return."
+      "description": "Maximum number of stops to return. Maglev validates 1–250; legacy Java does not enforce this range (see Implementation Decisions)."
     },
     "key": {
       "type": "string",
@@ -229,7 +233,11 @@ None.
     "includeReferences": {
       "type": "boolean",
       "default": true,
-      "description": "Whether to include the references block. Note: passing false triggers a server bug (see Suspected Defects)."
+      "description": "Whether to include references. Legacy Java returns a null body when false; Maglev deviates and returns the stop list with empty reference arrays (see Implementation Decisions)."
+    },
+    "agencyId": {
+      "type": "string",
+      "description": "Accepted by the legacy endpoint but ignored; search is always across all agencies."
     }
   }
 }
@@ -237,13 +245,15 @@ None.
 
 **`input`** — The string to match against stop names. The server converts it to lower case before lookup. Matching is prefix-based: a value of `pine` matches any stop whose name contains a token starting with `pine`. Multi-word prefixes (e.g. `pine st`) are also matched as long as they correspond to a prefix of the full stop name up to 32 characters. Does not match against stop codes or stop entity IDs. *Maglev's multi-term matching is order-independent and requires all terms to match — see [Implementation Decisions](#implementation-decisions).*
 
-**`maxCount`** — Upper bound on the number of results returned. Defaults to 20. Applied before the route-type filter, so the actual list may be shorter. *In Maglev, stops with no agency-resolved combined ID sort after agency-resolved stops before this cap is applied; see [Implementation Decisions](#implementation-decisions).*
+**`maxCount`** — Upper bound on the number of results returned. Defaults to 20. Java's setter does not validate the range. Applied before the route-type filter, so the actual list may be shorter. *Maglev accepts 1 through 250 inclusive and rejects other values with HTTP 400; agency-less matches sort after agency-resolved stops before this cap is applied — see [Implementation Decisions](#implementation-decisions).*
 
 **`key`** — API authentication key. Missing or invalid key returns HTTP 401.
 
 **`version`** — Response version selector. Defaults to 2. Only version 2 is supported.
 
-**`includeReferences`** — When `true` (default), the `references` block is populated with route and agency objects. Passing `false` causes a server-side bug that returns a null response body; do not use.
+**`includeReferences`** — When `true` (default), the `references` block is populated with route and agency objects. In legacy Java, passing `false` causes a server-side bug that returns a null response body. *Maglev intentionally corrects this and returns the stop list with empty reference arrays instead — see [Implementation Decisions](#implementation-decisions).*
+
+**`agencyId`** — Accepted for legacy compatibility but ignored; search always runs across all agencies. See [Suspected Defects](#suspected-defects).
 
 ---
 
@@ -296,7 +306,7 @@ None.
 
 **`data.outOfRange`** — Always `false` for this endpoint.
 
-**`data.references`** — Full objects for all routes and agencies referenced in the list. Present when `includeReferences=true`. `situations` is empty for this endpoint because no `situationIds` field appears in `data.list`; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
+**`data.references`** — Full objects for all routes and agencies referenced in the list when `includeReferences=true`. *When `includeReferences=false`, Maglev deviates from Java's null-body bug: the response still includes `data.list`, and every references array is empty — see [Implementation Decisions](#implementation-decisions).* `situations` is empty for this endpoint because no `situationIds` field appears in `data.list`; see [Implementation Decisions](#implementation-decisions) and [[Situation-References]].
 
 ---
 
