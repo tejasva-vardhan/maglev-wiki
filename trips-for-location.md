@@ -164,6 +164,10 @@ Java resolves an absent or explicit `time` parameter's calendar day using the se
 
 `trips-for-location`'s own time resolution (`internal/restapi/trips_for_location_handler.go`, `currentLocation := agencyLocations[agencies[0].ID]`) already resolves against the queried agency's timezone instead of the JVM default — this predates PR #1352, which brought `stops-for-location`'s equivalent fallback in line with the same approach. As on that page, this is a deliberate improvement (self-correcting regardless of the server process's own configured timezone) rather than a port of Java's literal mechanism, and it shares the same single-feed-limitation trade-off: "the queried agency" is `agencies[0]`, correct only because exactly one agency is ever loaded today — see [Multi-Agency-Static-Feeds-Stop-Consolidation.md §10](Multi-Agency-Static-Feeds-Stop-Consolidation.md#10-deviations-from-legacy-due-to-the-single-feed-limitation).
 
+**`NaN` in `lat`, `lon`, `radius`, `latSpan` or `lonSpan` returns HTTP 400 (deviates from legacy; see [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions) for the full write-up).**
+
+Legacy's `double` setters ([`TripsForLocationAction.java#L67–L85`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripsForLocationAction.java#L67)) accept the literal `NaN` without a field error. Maglev returns HTTP 400 for any non-finite value, through the same `utils.ParseFloatParam` as `stops-for-location`. Introduced in [PR #1490](https://github.com/OneBusAway/maglev/pull/1490).
+
 ## Open Questions
 
 None.

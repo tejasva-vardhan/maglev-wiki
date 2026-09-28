@@ -186,6 +186,14 @@ This is invisible on any GTFS-RT feed configured with a single `agency-ids` entr
 
 If this is reconsidered in the future, the fallback is Java's behaviour — always prefix using the feed's first configured agency — which reintroduces the two-IDs-for-one-alert problem on cross-agency lookups that this deviation exists to avoid.
 
+**Malformed `includeTrip`, `includeSchedule` or `includeStatus` returns HTTP 400, checked before the trip lookup (deviates from legacy).**
+
+Legacy binds these parameters to primitive `boolean` setters ([`TripDetailsAction.java#L88–L98`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripDetailsAction.java#L88)). Struts converts them with `Boolean.valueOf`, which never fails: `true` in any letter case means true, and every other value (`abc`, `1`, `yes`) means false. So legacy never records a field error for these parameters. Legacy does check field errors before looking up the trip ([`TripDetailsAction.java#L105–L106`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripDetailsAction.java#L105)), but only a malformed `serviceDate` or `time` can fail that check. For those two, Maglev and legacy agree.
+
+Maglev parses the three booleans with Go's `strconv.ParseBool` (`utils.ParseBoolParam`, `internal/utils/api.go`). It accepts `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false` and `False`, and rejects anything else with HTTP 400 and the field error `must be a boolean value (true/false)`. Since [PR #1489](https://github.com/OneBusAway/maglev/pull/1489), every query parameter is checked before the trip lookup, so a malformed value returns 400 even for an unknown trip ID, where legacy returns 404.
+
+This follows Maglev's policy of rejecting malformed input rather than reproducing legacy's lenient parsing: silently reading a typo such as `includeStatus=ture` as `false` hides the caller's mistake. One consequence goes beyond rejection: Maglev reads `1`, `t` and the other non-`true` spellings Go accepts as true, where legacy reads them as false. That difference, and applying the policy consistently across endpoints, is tracked in [#1499](https://github.com/OneBusAway/maglev/issues/1499).
+
 ---
 
 ## Open Questions

@@ -133,6 +133,10 @@ Maglev's `buildRouteSearchQuery` escapes/quotes every term into a literal FTS5 p
 
 Practical effect versus legacy: a caller who types Lucene-style special characters gets a (possibly empty) result set instead of a 400. This is a deliberate side effect of [PR #1289](https://github.com/OneBusAway/maglev/pull/1289)'s own fix for punctuation-only terms crashing FTS5 with a syntax error — reproducing legacy's 400 here would mean detecting and rejecting the same input that fix was written to make safe. If this proves wrong, the fallback is to validate the raw query for Lucene-reserved characters before escaping and return a 400 field error, matching legacy's contract.
 
+**`NaN` in `lat`, `lon`, `radius`, `latSpan` or `lonSpan` returns HTTP 400 (deviates from legacy; see [stops-for-location § Implementation Decisions](stops-for-location.md#implementation-decisions) for the full write-up).**
+
+Legacy's `double` setters ([`RoutesForLocationAction.java#L68–L86`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/RoutesForLocationAction.java#L68)) accept the literal `NaN` without a field error. Maglev returns HTTP 400 for any non-finite value, through the same `utils.ParseFloatParam` as `stops-for-location`. Introduced in [PR #1490](https://github.com/OneBusAway/maglev/pull/1490).
+
 ## Open Questions
 
 None.

@@ -190,6 +190,12 @@ Practical effect versus legacy: under Maglev's current single-static-feed limita
 
 This is tracked as a row in [Multi-Agency-Static-Feeds-Stop-Consolidation.md §10](Multi-Agency-Static-Feeds-Stop-Consolidation.md#10-deviations-from-legacy-due-to-the-single-feed-limitation) rather than treated as a standalone decision to revisit independently — the fix is the same federated multi-feed support already tracked for that whole table.
 
+**`NaN` in `lat`, `lon`, `radius`, `latSpan` or `lonSpan` returns HTTP 400 (deviates from legacy).**
+
+Legacy binds these parameters to `double` setters ([`StopsForLocationAction.java#L85–L103`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/StopsForLocationAction.java#L85)), and the Struts numeric converter accepts the literal string `NaN`, so no field error is recorded and the request runs with a NaN value. A NaN `radius`, `latSpan` or `lonSpan` fails every `> 0` check in `getSearchBounds`, so legacy silently falls back to the default search radius ([`StopsForLocationAction.java#L185–L199`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/StopsForLocationAction.java#L185)). A NaN `lat` or `lon` produces NaN search bounds and an HTTP 200 response. The infinite spellings (`Infinity`, `-Infinity`, `Inf`, and overflow such as `1e400`) are rejected by legacy's converter with HTTP 400, and Maglev matches that.
+
+Maglev rejects every non-finite value with HTTP 400 and the same field error legacy uses for the infinite spellings, e.g. `Invalid field value for field "lat".` This follows Maglev's policy of rejecting malformed input rather than reproducing legacy's lenient parsing: a NaN coordinate or radius is never a meaningful request, and a 400 tells the caller so instead of answering a different search from the one asked for. Introduced in [PR #1490](https://github.com/OneBusAway/maglev/pull/1490). The parsing lives in `utils.ParseFloatParam` (`internal/utils/api.go`), which `routes-for-location` and `trips-for-location` share. Applying the policy consistently across endpoints is tracked in [#1499](https://github.com/OneBusAway/maglev/issues/1499).
+
 ## Open Questions
 
 None. All observable behaviours were resolved through static source analysis and live server testing.
