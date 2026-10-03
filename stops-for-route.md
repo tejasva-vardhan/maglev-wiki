@@ -92,6 +92,8 @@ When `includePolylines` is `false`, the factory sets `group.setPolylines(null)` 
 
 ## Request Parameters
 
+`includePolylines` and `includeReferences` default to true only when omitted. Supplied empty values (`?flag=` or bare `?flag`) mean false in Java and in Maglev PR #1511. Empty `includePolylines` suppresses both entry-level and direction-group geometry; empty `includeReferences` suppresses reference contents. See [[Boolean-Query-Parameters]] for binding rules and Maglev's strict-validation decision.
+
 ```json
 {
   "type": "object",

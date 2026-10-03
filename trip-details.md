@@ -192,9 +192,9 @@ Legacy binds these parameters to primitive `boolean` setters ([`TripDetailsActio
 
 Maglev parses `serviceDate` and `time` against exact layouts (`2006-01-02` and `2006-01-02_15-04-05`, or epoch milliseconds) and returns HTTP 400 for every loosely formatted value above. It does not yet reject negative epochs, which legacy does; that is a defect, not a decision, and is tracked in [#1499](https://github.com/OneBusAway/maglev/issues/1499).
 
-Maglev parses the three booleans with Go's `strconv.ParseBool` (`utils.ParseBoolParam`, `internal/utils/api.go`). It accepts `1`, `t`, `T`, `TRUE`, `true`, `True`, `0`, `f`, `F`, `FALSE`, `false` and `False`, and rejects anything else with HTTP 400 and the field error `must be a boolean value (true/false)`. Since [PR #1489](https://github.com/OneBusAway/maglev/pull/1489), every query parameter is checked before the trip lookup, so a malformed value returns 400 even for an unknown trip ID, where legacy returns 404.
+Maglev parses the three booleans with `utils.ParseBoolParam` (`internal/utils/api.go`). It accepts only case-insensitive `true`/`false` for non-empty values, rejecting other spellings (including `1`, `0`, `t`, and `f`) with HTTP 400 and the field error `must be a boolean value (true/false)`. [PR #1511](https://github.com/OneBusAway/maglev/pull/1511) makes supplied empty values false while omission retains the endpoint default; see [[Boolean-Query-Parameters]]. Since [PR #1489](https://github.com/OneBusAway/maglev/pull/1489), every query parameter is checked before the trip lookup, so a malformed value returns 400 even for an unknown trip ID, where legacy returns 404.
 
-This follows Maglev's policy of rejecting malformed input rather than reproducing legacy's lenient parsing: silently reading a typo such as `includeStatus=ture` as `false`, or `2025-13-45` as a date in February, hides the caller's mistake. One consequence goes beyond rejection: Maglev reads `1`, `t` and the other non-`true` spellings Go accepts as true, where legacy reads them as false. That difference, and applying the policy consistently across endpoints, is tracked in [#1499](https://github.com/OneBusAway/maglev/issues/1499).
+This follows Maglev's policy of rejecting malformed input rather than reproducing legacy's lenient parsing: silently reading a typo such as `includeStatus=ture` as `false`, or `2025-13-45` as a date in February, hides the caller's mistake. Maglev rejects Go's extra boolean spellings rather than accepting them as true or false. Applying the strict-validation policy consistently across endpoints is tracked in [#1499](https://github.com/OneBusAway/maglev/issues/1499).
 
 ---
 
@@ -205,6 +205,8 @@ None. All observable behaviours were resolved through static analysis and live s
 ---
 
 ## Request Parameters
+
+Boolean flags retain their listed defaults only when omitted. Supplied empty values (`?flag=` or bare `?flag`) mean false in Java and in Maglev PR #1511; malformed non-empty values differ between implementations. See [[Boolean-Query-Parameters]] and [Implementation Decisions](#implementation-decisions).
 
 ```json
 {

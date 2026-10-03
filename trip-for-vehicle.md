@@ -150,11 +150,13 @@ If this is reconsidered in the future, it needs to be coordinated with an iOS-si
 
 **Malformed `includeTrip`, `includeSchedule` or `includeStatus` returns HTTP 400 (deviates from legacy; see [trip-details § Implementation Decisions](trip-details.md#implementation-decisions) for the full write-up).**
 
-Legacy's primitive `boolean` setters ([`TripForVehicleAction.java#L73–L83`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripForVehicleAction.java#L73)) read any value other than `true` as false and never record a field error. Maglev parses them with the same `utils.ParseBoolParam` as `trip-details` and returns HTTP 400 for anything Go's `strconv.ParseBool` rejects. Unlike `trip-details`, Maglev parses these after the vehicle lookup, so an unknown vehicle ID still returns 404 whatever the parameters.
+Legacy's primitive `boolean` setters ([`TripForVehicleAction.java#L73–L83`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-api-webapp/src/main/java/org/onebusaway/api/actions/api/where/TripForVehicleAction.java#L73)) read any value other than `true` as false and never record a field error. Maglev parses them with the same `utils.ParseBoolParam` as `trip-details`, accepts case-insensitive `true`/`false`, and returns HTTP 400 for other non-empty values, including Go's extra spellings `1`, `0`, `t`, and `f`. [PR #1511](https://github.com/OneBusAway/maglev/pull/1511) makes supplied empty values false while omission retains the endpoint default; see [[Boolean-Query-Parameters]]. Unlike `trip-details`, Maglev parses these after the vehicle lookup, so an unknown vehicle ID still returns 404 whatever the parameters.
 
 ---
 
 ## Request Parameters
+
+Boolean flags retain their listed defaults only when omitted. Supplied empty values (`?flag=` or bare `?flag`) mean false in Java and in Maglev PR #1511; malformed non-empty values differ between implementations. See [[Boolean-Query-Parameters]] and [Implementation Decisions](#implementation-decisions).
 
 ```json
 {

@@ -181,6 +181,8 @@ None. All behaviours were resolved by static analysis of the call chain and conf
 
 ## Request Parameters
 
+Boolean flags retain their listed defaults only when omitted. Supplied empty values (`?flag=` or bare `?flag`) mean false in Java and in Maglev PR #1511. See [[Boolean-Query-Parameters]] for binding rules and Maglev's strict-validation decision.
+
 ```json
 {
   "type": "object",

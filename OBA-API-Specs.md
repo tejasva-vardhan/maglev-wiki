@@ -82,5 +82,6 @@ Behavior shared across multiple endpoint pages, documented once and linked from 
 
 | Topic | Page |
 |-------|------|
+| Boolean query flags: omitted defaults, empty values, and strict validation | [[Boolean-Query-Parameters]] |
 | Stop `direction` field inference from shape geometry | [[Stop-Direction-Calculation]] |
 | Service-alert situation IDs and `references.situations` inclusion | [[Situation-References]] |
