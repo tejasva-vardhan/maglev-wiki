@@ -344,7 +344,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`tripId`** — Combined `{agencyId}_{tripId}` of the scheduled trip. A full trip object appears in `references.trips`. Note: in interlining scenarios, the vehicle may currently be executing a different trip in the same block; `tripStatus.activeTripId` identifies the vehicle's current trip.
 
-**`serviceDate`** — Unix milliseconds at midnight of the service date for this trip. Times past midnight belong to the service date of the previous calendar day. For example, a 01:00 Tuesday departure has a service date of Monday midnight.
+**`serviceDate`** — Unix milliseconds of the service-day start in the agency's timezone (local noon minus 12 hours, Java `ServiceDate.getAsDate`). That instant is local midnight except on a DST transition day. Times past midnight belong to the previous calendar day's service date. For example, a 01:00 Tuesday departure has Monday's service date.
 
 **`vehicleId`** — Combined `{agencyId}_{vehicleId}` of the vehicle currently assigned, or empty when no real-time data is available.
 
@@ -447,7 +447,7 @@ None. All behaviours were determinable from the source code and confirmed agains
 
 **`tripStatus.blockTripSequence`** — Index of the currently-active trip within the vehicle's block. Compare against the parent entry's `blockTripSequence` to determine whether the vehicle is on a preceding or the same trip.
 
-**`tripStatus.serviceDate`** — Unix milliseconds at midnight of the service date for the currently-active trip.
+**`tripStatus.serviceDate`** — Unix milliseconds of the service-day start for the currently-active trip, same as the entry `serviceDate`.
 
 **`tripStatus.frequency`** — Frequency descriptor, present only for frequency-based trips.
 

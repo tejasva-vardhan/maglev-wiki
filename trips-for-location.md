@@ -295,7 +295,7 @@ Boolean flags retain their listed defaults only when omitted. Supplied empty val
 
 **`data.list[].tripId`** — Combined `agencyId_entityId` identifier of the scheduled trip the vehicle is executing.
 
-**`data.list[].serviceDate`** — Unix millisecond timestamp of midnight at the start of the service day for this trip. For trips that extend past midnight, the service date is the previous calendar day: the block search resolves candidate service dates against the block's scheduled time range (which can exceed 24:00:00), not against the calendar date of the query time. [Source: [`BlockStatusServiceImpl.java#L192-L210`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L192-L210), [`BlockCalendarServiceImpl.java#L247-L265`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockCalendarServiceImpl.java#L247-L265)]
+**`data.list[].serviceDate`** — Unix milliseconds of the service-day start in the agency's timezone (local noon minus 12 hours). That instant is local midnight except on a DST transition day. For trips that extend past midnight, the service date is the previous calendar day: the block search resolves candidate service dates against the block's scheduled time range (which can exceed 24:00:00), not against the calendar date of the query time. [Source: [`BlockStatusServiceImpl.java#L192-L210`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockStatusServiceImpl.java#L192-L210), [`BlockCalendarServiceImpl.java#L247-L265`](https://github.com/OneBusAway/onebusaway-application-modules/blob/095bf1ac3aeb7009b9f78e7f1cb4c65bd38b988a/onebusaway-transit-data-federation/src/main/java/org/onebusaway/transit_data_federation/impl/blocks/BlockCalendarServiceImpl.java#L247-L265)]
 
 **`data.list[].frequency`** — For headway-based (frequency) trips, a frequency object giving start time, end time, headway, and exactTimes. `null` for ordinary fixed-schedule trips.
 
@@ -349,7 +349,7 @@ Boolean flags retain their listed defaults only when omitted. Supplied empty val
 
 **`data.list[].status.blockTripSequence`** — Zero-based index of the active trip within the ordered sequence of trips in the vehicle's block for the service day. `-1` if the active trip could not be determined.
 
-**`data.list[].status.serviceDate`** — Unix milliseconds of midnight at the start of the service day. Duplicates `data.list[].serviceDate`, including the previous-calendar-day behaviour for trips extending past midnight.
+**`data.list[].status.serviceDate`** — Unix milliseconds of local midnight for the active trip's service date. `BuildTripStatus` still normalizes to midnight ([#1497](https://github.com/OneBusAway/maglev/issues/1497)), so on a DST transition day this differs from `data.list[].serviceDate`, which is the service-day start. Trips extending past midnight still use the previous calendar day's service date.
 
 **`data.list[].status.frequency`** — Frequency object for headway-based trips; `null` otherwise.
 

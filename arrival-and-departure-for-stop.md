@@ -197,7 +197,7 @@ None.
 
 **`tripId`** — Trip ID in combined `{agencyId}_{entityId}` form. Identifies which scheduled trip the caller is asking about.
 
-**`serviceDate`** — The service date of the trip as a Unix millisecond timestamp (all-digit string) or a `YYYY-MM-DD` date. The service date anchors midnight for the operating day; trips running past midnight carry the previous calendar day's service date.
+**`serviceDate`** — The service date of the trip as a Unix millisecond timestamp (all-digit string) or a `YYYY-MM-DD` date. A timestamp is read as the service date that contains that instant. Trips running past midnight carry the previous calendar day's service date.
 
 **`vehicleId`** — Optional. Combined `{agencyId}_{vehicleId}` form. Restricts the block location lookup to a specific vehicle, helping when two vehicles are both associated with the same block at the same time.
 
@@ -294,7 +294,7 @@ None.
 
 **`data.entry.tripId`** — Combined `{agencyId}_{tripId}` of the requested trip.
 
-**`data.entry.serviceDate`** — Unix milliseconds at midnight of the service date. For trips running past midnight this is the midnight of the previous calendar day.
+**`data.entry.serviceDate`** — Unix milliseconds of the service-day start in the agency's timezone (local noon minus 12 hours, Java `ServiceDate.getAsDate`). That instant is local midnight except on a DST transition day. For trips running past midnight this is the previous calendar day's service date.
 
 **`data.entry.vehicleId`** — Combined `{agencyId}_{vehicleId}` of the vehicle currently serving this trip. Empty string when no real-time vehicle data is available or when the trip is cancelled.
 
@@ -414,7 +414,7 @@ None.
 
 **`data.entry.tripStatus.blockTripSequence`** — The position of the *active* trip within the block. Compare against `entry.blockTripSequence` to tell whether the vehicle is still on a prior trip (lower value) or has already reached this trip (equal value).
 
-**`data.entry.tripStatus.serviceDate`** — Unix milliseconds of midnight for the active trip's service date.
+**`data.entry.tripStatus.serviceDate`** — Unix milliseconds of the service-day start for the active trip's service date, same as `data.entry.serviceDate`.
 
 **`data.entry.tripStatus.frequency`** — Frequency window if the active trip is headway-based. `null` for point-scheduled trips.
 

@@ -321,7 +321,7 @@ None. All behaviour was determined by static analysis of the full call chain and
 }
 ```
 
-**`scheduleFrequencies[].serviceDate`** — The start of the service day in Unix milliseconds (midnight of the service date in the agency's timezone).
+**`scheduleFrequencies[].serviceDate`** — Unix milliseconds of the service-day start (local noon minus 12 hours). That instant is local midnight except on a DST transition day.
 
 **`scheduleFrequencies[].startTime`** — The beginning of the frequency window in Unix milliseconds (absolute wall-clock time, not a relative offset). Vehicles depart approximately every `headway` seconds from this time until `endTime`.
 

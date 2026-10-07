@@ -58,7 +58,7 @@ Client sends a GET request to `/api/where/trip-details/{id}.json` with a valid A
 
 4. The system constructs the response entry:
 
-   a. Sets `tripId` to the combined trip ID string and `serviceDate` to the Unix millisecond timestamp of midnight on the operating service date.
+   a. Sets `tripId` to the combined trip ID string and `serviceDate` to the Unix millisecond timestamp of the operating service date. Java uses the service-day start (local noon minus 12 hours). Maglev still reports local midnight here; [#1497](https://github.com/OneBusAway/maglev/issues/1497) tracks switching it to the service-day start, which the arrivals endpoints already return.
 
    b. If the trip is frequency-based, populates `frequency` with window start/end times (as Unix milliseconds) and the headway in seconds.
 
@@ -326,7 +326,7 @@ Boolean flags retain their listed defaults only when omitted. Supplied empty val
 
 **`data.entry.tripId`** — The combined `{agencyId}_{entityId}` identifier of the requested trip.
 
-**`data.entry.serviceDate`** — The Unix millisecond timestamp of midnight on the service date for which this trip instance was resolved. Use this value when constructing subsequent requests that require a service date for disambiguation.
+**`data.entry.serviceDate`** — Unix milliseconds of the service date for which this trip instance was resolved. Java returns the service-day start (local noon minus 12 hours), which differs from local midnight on a DST transition day. Maglev still reports local midnight on this endpoint ([#1497](https://github.com/OneBusAway/maglev/issues/1497)). Use this value when constructing subsequent requests that require a service date for disambiguation.
 
 **`data.entry.frequency`** — Present only for frequency-based (headway-operated) trips. See the `frequency` schema below.
 
@@ -458,7 +458,7 @@ Boolean flags retain their listed defaults only when omitted. Supplied empty val
 
 **`data.entry.status.blockTripSequence`** — Zero-based position of the active trip within the block's ordered trip list.
 
-**`data.entry.status.serviceDate`** — Unix milliseconds of midnight on the operating service date, matching `data.entry.serviceDate`.
+**`data.entry.status.serviceDate`** — Unix milliseconds of local midnight on the operating service date, matching `data.entry.serviceDate`. Java's value is the service-day start; Maglev still reports midnight here ([#1497](https://github.com/OneBusAway/maglev/issues/1497)).
 
 **`data.entry.status.frequency`** — Frequency window if the active trip is headway-operated. See the `frequency` schema below.
 

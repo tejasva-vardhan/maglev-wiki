@@ -245,7 +245,7 @@ None.
 
 **`data.entry.routeId`** — Combined route ID in `{agencyId}_{routeId}` form (mirrors the request parameter).
 
-**`data.entry.scheduleDate`** — The service date for which the schedule was computed, expressed as a Unix millisecond timestamp representing midnight at the start of that day in the feed's configured timezone (America/Los_Angeles for the KCM feed). For example, 2026-05-08 in PDT (UTC-7) is returned as `1778223600000`.
+**`data.entry.scheduleDate`** — Unix milliseconds of the service-day start (local noon minus 12 hours) in the feed's timezone. Stop-time durations are added to this instant (`scheduleDate + time * 1000`). It equals local midnight except on a DST transition day. For example, 2026-05-08 in PDT (UTC-7) is returned as `1778223600000`.
 
 **`data.entry.serviceIds`** — List of combined service IDs (`{agencyId}_{serviceId}`) for service calendars that are active on the requested date and include trips for this route. Empty when no trips run on that date. These correspond to GTFS `service_id` values prefixed with the agency ID.
 
